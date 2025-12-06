@@ -7,6 +7,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import Groq from "groq-sdk";
+import * as processing from "./services/processing";
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -362,6 +363,269 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error updating user:", error);
       res.status(500).json({ message: "Failed to update user" });
+    }
+  });
+
+  // PDF Split Tool
+  app.post("/api/tools/pdf-split", isAuthenticated, upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      const userId = req.user.claims.sub;
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.pdf_split || 1);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+      const { pageRanges } = req.body;
+      const result = await processing.splitPdf(req.file.path, pageRanges || "");
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error splitting PDF:", error);
+      res.status(500).json({ message: error.message || "Failed to split PDF" });
+    }
+  });
+
+  // PDF Lock Tool
+  app.post("/api/tools/pdf-lock", isAuthenticated, upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      const userId = req.user.claims.sub;
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.pdf_lock || 1);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+      const { password } = req.body;
+      if (!password) {
+        return res.status(400).json({ message: "Password is required" });
+      }
+      const result = await processing.lockPdf(req.file.path, password);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error locking PDF:", error);
+      res.status(500).json({ message: error.message || "Failed to lock PDF" });
+    }
+  });
+
+  // PDF Unlock Tool
+  app.post("/api/tools/pdf-unlock", isAuthenticated, upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      const userId = req.user.claims.sub;
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.pdf_unlock || 1);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+      const { password } = req.body;
+      if (!password) {
+        return res.status(400).json({ message: "Password is required" });
+      }
+      const result = await processing.unlockPdf(req.file.path, password);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error unlocking PDF:", error);
+      res.status(500).json({ message: error.message || "Failed to unlock PDF" });
+    }
+  });
+
+  // Image Compress Tool
+  app.post("/api/tools/image-compress", isAuthenticated, upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      const userId = req.user.claims.sub;
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.image_compress || 1);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+      const quality = parseInt(req.body.quality) || 80;
+      const result = await processing.compressImage(req.file.path, quality);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error compressing image:", error);
+      res.status(500).json({ message: error.message || "Failed to compress image" });
+    }
+  });
+
+  // Image Resize Tool
+  app.post("/api/tools/image-resize", isAuthenticated, upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      const userId = req.user.claims.sub;
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.image_resize || 1);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+      const width = parseInt(req.body.width);
+      const height = parseInt(req.body.height);
+      const maintainAspect = req.body.maintainAspect !== "false";
+      if (!width || !height) {
+        return res.status(400).json({ message: "Width and height are required" });
+      }
+      const result = await processing.resizeImage(req.file.path, width, height, maintainAspect);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error resizing image:", error);
+      res.status(500).json({ message: error.message || "Failed to resize image" });
+    }
+  });
+
+  // Image Convert Tool
+  app.post("/api/tools/image-convert", isAuthenticated, upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      const userId = req.user.claims.sub;
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.image_convert || 1);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+      const targetFormat = req.body.targetFormat as "jpg" | "png" | "webp";
+      if (!targetFormat || !["jpg", "png", "webp"].includes(targetFormat)) {
+        return res.status(400).json({ message: "Invalid target format" });
+      }
+      const result = await processing.convertImage(req.file.path, targetFormat);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error converting image:", error);
+      res.status(500).json({ message: error.message || "Failed to convert image" });
+    }
+  });
+
+  // Background Remove Tool
+  app.post("/api/tools/bg-remove", isAuthenticated, upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      const userId = req.user.claims.sub;
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.bg_remove || 2);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+      const result = await processing.removeBackground(req.file.path);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error removing background:", error);
+      res.status(500).json({ message: error.message || "Failed to remove background" });
+    }
+  });
+
+  // CSV to Excel Tool
+  app.post("/api/tools/csv-to-excel", isAuthenticated, upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      const userId = req.user.claims.sub;
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.csv_to_excel || 1);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+      const result = await processing.csvToExcel(req.file.path);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error converting CSV to Excel:", error);
+      res.status(500).json({ message: error.message || "Failed to convert CSV to Excel" });
+    }
+  });
+
+  // Excel Clean Tool
+  app.post("/api/tools/excel-clean", isAuthenticated, upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      const userId = req.user.claims.sub;
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.excel_clean || 2);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+      const result = await processing.cleanExcel(req.file.path);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error cleaning Excel:", error);
+      res.status(500).json({ message: error.message || "Failed to clean Excel file" });
+    }
+  });
+
+  // JSON Format Tool
+  app.post("/api/tools/json-format", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.json_format || 1);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+      const { json } = req.body;
+      if (!json) {
+        return res.status(400).json({ message: "JSON content is required" });
+      }
+      const result = processing.formatJson(json);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error formatting JSON:", error);
+      res.status(500).json({ message: error.message || "Failed to format JSON" });
+    }
+  });
+
+  // Download processed file
+  app.get("/api/tools/download/:filename", isAuthenticated, async (req: any, res) => {
+    try {
+      const { filename } = req.params;
+      const uploadDir = path.join(process.cwd(), "uploads");
+      const filePath = path.join(uploadDir, filename);
+      
+      if (!filePath.startsWith(uploadDir)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ message: "File not found" });
+      }
+      
+      res.download(filePath, filename);
+    } catch (error: any) {
+      console.error("Error downloading file:", error);
+      res.status(500).json({ message: error.message || "Failed to download file" });
     }
   });
 

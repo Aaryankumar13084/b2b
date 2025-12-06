@@ -74,7 +74,6 @@ const tools: Tool[] = [
     icon: Scissors,
     category: "document",
     href: "/tools/pdf-split",
-    badge: "Coming Soon",
   },
   {
     id: "pdf-lock",
@@ -83,7 +82,6 @@ const tools: Tool[] = [
     icon: Lock,
     category: "document",
     href: "/tools/pdf-lock",
-    badge: "Coming Soon",
   },
   {
     id: "pdf-unlock",
@@ -92,7 +90,6 @@ const tools: Tool[] = [
     icon: Unlock,
     category: "document",
     href: "/tools/pdf-unlock",
-    badge: "Coming Soon",
   },
   {
     id: "image-compress",
@@ -101,7 +98,6 @@ const tools: Tool[] = [
     icon: ImageMinus,
     category: "image",
     href: "/tools/image-compress",
-    badge: "Coming Soon",
   },
   {
     id: "image-resize",
@@ -110,7 +106,6 @@ const tools: Tool[] = [
     icon: Maximize2,
     category: "image",
     href: "/tools/image-resize",
-    badge: "Coming Soon",
   },
   {
     id: "image-convert",
@@ -119,7 +114,6 @@ const tools: Tool[] = [
     icon: RefreshCw,
     category: "image",
     href: "/tools/image-convert",
-    badge: "Coming Soon",
   },
   {
     id: "bg-remove",
@@ -128,7 +122,6 @@ const tools: Tool[] = [
     icon: Image,
     category: "image",
     href: "/tools/bg-remove",
-    badge: "Coming Soon",
   },
   {
     id: "csv-to-excel",
@@ -137,7 +130,6 @@ const tools: Tool[] = [
     icon: FileSpreadsheet,
     category: "data",
     href: "/tools/csv-to-excel",
-    badge: "Coming Soon",
   },
   {
     id: "excel-clean",
@@ -146,7 +138,6 @@ const tools: Tool[] = [
     icon: TableProperties,
     category: "data",
     href: "/tools/excel-clean",
-    badge: "Coming Soon",
   },
   {
     id: "json-format",
@@ -155,7 +146,6 @@ const tools: Tool[] = [
     icon: Braces,
     category: "data",
     href: "/tools/json-format",
-    badge: "Coming Soon",
   },
 ];
 

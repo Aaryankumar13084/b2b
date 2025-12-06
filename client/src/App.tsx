@@ -22,6 +22,16 @@ import PdfToWord from "@/pages/tools/pdf-to-word";
 import WordToPdf from "@/pages/tools/word-to-pdf";
 import PdfMerge from "@/pages/tools/pdf-merge";
 import PdfCompress from "@/pages/tools/pdf-compress";
+import PdfSplit from "@/pages/tools/pdf-split";
+import PdfLock from "@/pages/tools/pdf-lock";
+import PdfUnlock from "@/pages/tools/pdf-unlock";
+import ImageCompress from "@/pages/tools/image-compress";
+import ImageResize from "@/pages/tools/image-resize";
+import ImageConvert from "@/pages/tools/image-convert";
+import BgRemove from "@/pages/tools/bg-remove";
+import CsvToExcel from "@/pages/tools/csv-to-excel";
+import ExcelClean from "@/pages/tools/excel-clean";
+import JsonFormat from "@/pages/tools/json-format";
 
 import AIChat from "@/pages/ai/chat";
 import AISummary from "@/pages/ai/summary";
@@ -35,6 +45,16 @@ function AuthenticatedRoutes() {
       <Route path="/tools/word-to-pdf" component={WordToPdf} />
       <Route path="/tools/pdf-merge" component={PdfMerge} />
       <Route path="/tools/pdf-compress" component={PdfCompress} />
+      <Route path="/tools/pdf-split" component={PdfSplit} />
+      <Route path="/tools/pdf-lock" component={PdfLock} />
+      <Route path="/tools/pdf-unlock" component={PdfUnlock} />
+      <Route path="/tools/image-compress" component={ImageCompress} />
+      <Route path="/tools/image-resize" component={ImageResize} />
+      <Route path="/tools/image-convert" component={ImageConvert} />
+      <Route path="/tools/bg-remove" component={BgRemove} />
+      <Route path="/tools/csv-to-excel" component={CsvToExcel} />
+      <Route path="/tools/excel-clean" component={ExcelClean} />
+      <Route path="/tools/json-format" component={JsonFormat} />
       <Route path="/ai" component={AIFeatures} />
       <Route path="/ai/chat" component={AIChat} />
       <Route path="/ai/summary" component={AISummary} />
