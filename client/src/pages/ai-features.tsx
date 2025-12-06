@@ -50,7 +50,6 @@ const aiTools: AiTool[] = [
     icon: Receipt,
     href: "/ai/invoice",
     credits: TOOL_CREDITS.ai_invoice,
-    badge: "Coming Soon",
   },
   {
     id: "ai-resume",

@@ -35,6 +35,7 @@ import JsonFormat from "@/pages/tools/json-format";
 
 import AIChat from "@/pages/ai/chat";
 import AISummary from "@/pages/ai/summary";
+import AIInvoice from "@/pages/ai/invoice";
 
 function AuthenticatedRoutes() {
   return (
@@ -58,6 +59,7 @@ function AuthenticatedRoutes() {
       <Route path="/ai" component={AIFeatures} />
       <Route path="/ai/chat" component={AIChat} />
       <Route path="/ai/summary" component={AISummary} />
+      <Route path="/ai/invoice" component={AIInvoice} />
       <Route path="/history" component={History} />
       <Route path="/subscription" component={Subscription} />
       <Route path="/settings" component={Settings} />
