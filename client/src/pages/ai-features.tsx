@@ -58,7 +58,6 @@ const aiTools: AiTool[] = [
     icon: FileCheck,
     href: "/ai/resume",
     credits: TOOL_CREDITS.ai_resume,
-    badge: "Coming Soon",
   },
   {
     id: "ai-legal",
@@ -67,7 +66,6 @@ const aiTools: AiTool[] = [
     icon: Scale,
     href: "/ai/legal",
     credits: TOOL_CREDITS.ai_legal,
-    badge: "Coming Soon",
   },
   {
     id: "ai-data-clean",
@@ -76,7 +74,6 @@ const aiTools: AiTool[] = [
     icon: TableProperties,
     href: "/ai/data-clean",
     credits: TOOL_CREDITS.ai_data_clean,
-    badge: "Coming Soon",
   },
   {
     id: "voice-to-doc",
@@ -85,7 +82,6 @@ const aiTools: AiTool[] = [
     icon: Mic,
     href: "/ai/voice",
     credits: TOOL_CREDITS.voice_to_doc,
-    badge: "Coming Soon",
   },
 ];
 

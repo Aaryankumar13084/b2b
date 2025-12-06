@@ -6,6 +6,7 @@ import fs from "fs";
 import path from "path";
 import { parsePhoneNumber, isValidPhoneNumber } from "libphonenumber-js";
 import validator from "validator";
+import { removeBackground as imglyRemoveBackground } from "@imgly/background-removal-node";
 
 export interface ProcessingResult {
   success: boolean;
@@ -242,42 +243,29 @@ export async function removeBackground(
     const baseName = path.basename(inputPath).replace(/\.[^/.]+$/, "");
     const outputPath = path.join(outputDir, `${baseName}_nobg.png`);
     
-    const image = sharp(inputPath);
-    const metadata = await image.metadata();
+    const imageBuffer = fs.readFileSync(inputPath);
+    const imageBlob = new Blob([imageBuffer]);
     
-    const { data, info } = await image
-      .ensureAlpha()
-      .raw()
-      .toBuffer({ resolveWithObject: true });
-    
-    const pixels = new Uint8ClampedArray(data);
-    const threshold = 240;
-    
-    for (let i = 0; i < pixels.length; i += 4) {
-      const r = pixels[i];
-      const g = pixels[i + 1];
-      const b = pixels[i + 2];
-      
-      if (r > threshold && g > threshold && b > threshold) {
-        pixels[i + 3] = 0;
-      }
-    }
-    
-    await sharp(Buffer.from(pixels), {
-      raw: {
-        width: info.width,
-        height: info.height,
-        channels: 4,
+    const resultBlob = await imglyRemoveBackground(imageBlob, {
+      model: "small",
+      output: {
+        format: "image/png",
+        quality: 0.9,
       },
-    })
-      .png()
-      .toFile(outputPath);
+    });
+    
+    const arrayBuffer = await resultBlob.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    
+    fs.writeFileSync(outputPath, buffer);
+    
+    const metadata = await sharp(outputPath).metadata();
     
     return {
       success: true,
       outputPath,
       outputName: `${baseName}_nobg.png`,
-      metadata: { width: info.width, height: info.height },
+      metadata: { width: metadata.width, height: metadata.height },
     };
   } catch (error: any) {
     return { success: false, error: error.message };

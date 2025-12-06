@@ -8,6 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { FileCheck, Upload, ArrowLeft, CheckCircle, Sparkles, FileText, Copy, Download, Star, AlertTriangle, TrendingUp, Briefcase } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 
 type UploadState = "idle" | "uploading" | "processing" | "complete" | "error";
 
@@ -37,6 +38,7 @@ export default function AIResume() {
   const [uploadState, setUploadState] = useState<UploadState>("idle");
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<ResumeAnalysis | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -89,68 +91,51 @@ export default function AIResume() {
 
     setUploadState("uploading");
     setProgress(0);
+    setError(null);
 
-    const uploadInterval = setInterval(() => {
+    const progressInterval = setInterval(() => {
       setProgress((prev) => {
-        if (prev >= 40) {
-          clearInterval(uploadInterval);
+        if (prev >= 90) {
           return prev;
         }
-        return prev + 10;
+        return prev + 5;
       });
-    }, 200);
+    }, 300);
 
-    setTimeout(() => {
+    try {
+      setProgress(30);
       setUploadState("processing");
-      const processInterval = setInterval(() => {
-        setProgress((prev) => {
-          if (prev >= 100) {
-            clearInterval(processInterval);
-            setUploadState("complete");
-            setResult({
-              overallScore: 78,
-              sections: [
-                { name: "Contact Information", score: 95, feedback: "Complete and professional" },
-                { name: "Work Experience", score: 82, feedback: "Good detail, could add more metrics" },
-                { name: "Education", score: 90, feedback: "Well formatted and complete" },
-                { name: "Skills", score: 70, feedback: "Add more technical skills relevant to your field" },
-                { name: "Summary", score: 65, feedback: "Consider making it more impactful and specific" },
-              ],
-              skills: [
-                { name: "JavaScript", level: "advanced", inDemand: true },
-                { name: "React", level: "advanced", inDemand: true },
-                { name: "Node.js", level: "intermediate", inDemand: true },
-                { name: "Python", level: "intermediate", inDemand: true },
-                { name: "SQL", level: "intermediate", inDemand: false },
-                { name: "TypeScript", level: "beginner", inDemand: true },
-                { name: "Project Management", level: "intermediate", inDemand: false },
-              ],
-              improvements: [
-                "Add quantifiable achievements with specific metrics (e.g., 'Increased sales by 25%')",
-                "Include more industry-specific keywords for better ATS compatibility",
-                "Add a professional summary that highlights your unique value proposition",
-                "Consider adding relevant certifications or online courses",
-                "Ensure consistent formatting throughout the document",
-              ],
-              strengths: [
-                "Strong work history with progressive responsibility",
-                "Good mix of technical and soft skills",
-                "Clear and organized layout",
-                "Relevant educational background",
-              ],
-              jobMatches: [
-                { title: "Senior Frontend Developer", matchPercentage: 85, company: "Tech Corp" },
-                { title: "Full Stack Engineer", matchPercentage: 78, company: "Startup Inc" },
-                { title: "React Developer", matchPercentage: 92, company: "Digital Agency" },
-                { title: "Software Engineer", matchPercentage: 75, company: "Enterprise Co" },
-              ],
-            });
-            return 100;
-          }
-          return prev + 15;
-        });
-      }, 400);
-    }, 1000);
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch("/api/ai/resume", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+
+      clearInterval(progressInterval);
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to analyze resume");
+      }
+
+      const data = await response.json();
+      setProgress(100);
+      setUploadState("complete");
+      setResult(data.analysis);
+    } catch (err: any) {
+      clearInterval(progressInterval);
+      setUploadState("error");
+      setError(err.message || "An error occurred while analyzing your resume");
+      toast({
+        title: "Analysis failed",
+        description: err.message || "Failed to analyze resume",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleCopy = (text: string) => {
@@ -202,6 +187,7 @@ ${result.jobMatches.map(j => `- ${j.title}${j.company ? ` at ${j.company}` : ""}
     setUploadState("idle");
     setProgress(0);
     setResult(null);
+    setError(null);
   };
 
   const getScoreColor = (score: number) => {
@@ -239,7 +225,7 @@ ${result.jobMatches.map(j => `- ${j.title}${j.company ? ` at ${j.company}` : ""}
             </div>
             <Badge variant="secondary" className="ml-auto">
               <Sparkles className="w-3 h-3 mr-1" />
-              4 Credits/analysis
+              3 Credits/analysis
             </Badge>
           </div>
         </div>
@@ -315,6 +301,25 @@ ${result.jobMatches.map(j => `- ${j.title}${j.company ? ` at ${j.company}` : ""}
                     ? "Uploading your resume..."
                     : "AI is analyzing your resume for insights..."}
                 </p>
+              </div>
+            )}
+
+            {uploadState === "error" && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-4 p-4 bg-red-500/10 rounded-lg">
+                  <AlertTriangle className="w-10 h-10 text-red-500" />
+                  <div className="flex-1">
+                    <p className="font-medium text-red-600 dark:text-red-400">
+                      Analysis Failed
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {error || "An error occurred while analyzing your resume"}
+                    </p>
+                  </div>
+                </div>
+                <Button onClick={resetUpload} className="w-full" data-testid="button-try-again">
+                  Try Again
+                </Button>
               </div>
             )}
 
