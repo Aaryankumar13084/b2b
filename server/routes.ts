@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { setupAuth, isAuthenticated, isAdmin } from "./replitAuth";
+import { setupAuth, isAdmin } from "./replitAuth";
 import { TOOL_CREDITS } from "@shared/schema";
 import multer from "multer";
 import path from "path";
@@ -79,13 +79,37 @@ async function extractTextFromFile(filePath: string, mimeType?: string): Promise
   }
 }
 
+const MOCK_USER_ID = "dev-user-001";
+
+async function ensureDevUser() {
+  const existingUser = await storage.getUser(MOCK_USER_ID);
+  if (!existingUser) {
+    await storage.upsertUser({
+      id: MOCK_USER_ID,
+      email: "dev@example.com",
+      firstName: "Dev",
+      lastName: "User",
+      profileImageUrl: null,
+    });
+  }
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
   await setupAuth(app);
+  await ensureDevUser();
 
-  app.get("/api/auth/user", isAuthenticated, async (req: any, res) => {
+  // Mock user middleware for development (remove when auth is re-enabled)
+  app.use((req: any, res, next) => {
+    if (!req.user) {
+      req.user = { claims: { sub: MOCK_USER_ID } };
+    }
+    next();
+  });
+
+  app.get("/api/auth/user", async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -99,7 +123,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/files", isAuthenticated, async (req: any, res) => {
+  app.get("/api/files", async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const userFiles = await storage.getUserFiles(userId);
@@ -110,7 +134,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/files/upload", isAuthenticated, upload.single("file"), async (req: any, res) => {
+  app.post("/api/files/upload", upload.single("file"), async (req: any, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ message: "No file uploaded" });
@@ -142,7 +166,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/files/:id/process", isAuthenticated, async (req: any, res) => {
+  app.post("/api/files/:id/process", async (req: any, res) => {
     try {
       const { id } = req.params;
       const { tool } = req.body;
@@ -186,7 +210,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/files/:id/download", isAuthenticated, async (req: any, res) => {
+  app.get("/api/files/:id/download", async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user.claims.sub;
@@ -214,7 +238,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/files/:id", isAuthenticated, async (req: any, res) => {
+  app.delete("/api/files/:id", async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user.claims.sub;
@@ -243,7 +267,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/ai/chat", isAuthenticated, async (req: any, res) => {
+  app.post("/api/ai/chat", async (req: any, res) => {
     try {
       const { message, fileId, context } = req.body;
       const userId = req.user.claims.sub;
@@ -301,7 +325,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/ai/summary", isAuthenticated, async (req: any, res) => {
+  app.post("/api/ai/summary", async (req: any, res) => {
     try {
       const { fileId, text } = req.body;
       const userId = req.user.claims.sub;
@@ -363,7 +387,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/subscription", isAuthenticated, async (req: any, res) => {
+  app.get("/api/subscription", async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -381,7 +405,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/admin/users", isAuthenticated, isAdmin, async (req: any, res) => {
+  app.get("/api/admin/users", isAdmin, async (req: any, res) => {
     try {
       const users = await storage.getAllUsers();
       res.json(users);
@@ -391,7 +415,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/admin/analytics", isAuthenticated, isAdmin, async (req: any, res) => {
+  app.get("/api/admin/analytics", isAdmin, async (req: any, res) => {
     try {
       const analytics = await storage.getAnalytics();
       res.json(analytics);
@@ -401,7 +425,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/admin/users/:id", isAuthenticated, isAdmin, async (req: any, res) => {
+  app.patch("/api/admin/users/:id", isAdmin, async (req: any, res) => {
     try {
       const { id } = req.params;
       const updates = req.body;
@@ -417,7 +441,7 @@ export async function registerRoutes(
   });
 
   // PDF Split Tool
-  app.post("/api/tools/pdf-split", isAuthenticated, upload.single("file"), async (req: any, res) => {
+  app.post("/api/tools/pdf-split", upload.single("file"), async (req: any, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ message: "No file uploaded" });
@@ -440,7 +464,7 @@ export async function registerRoutes(
   });
 
   // PDF Lock Tool
-  app.post("/api/tools/pdf-lock", isAuthenticated, upload.single("file"), async (req: any, res) => {
+  app.post("/api/tools/pdf-lock", upload.single("file"), async (req: any, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ message: "No file uploaded" });
@@ -466,7 +490,7 @@ export async function registerRoutes(
   });
 
   // PDF Unlock Tool
-  app.post("/api/tools/pdf-unlock", isAuthenticated, upload.single("file"), async (req: any, res) => {
+  app.post("/api/tools/pdf-unlock", upload.single("file"), async (req: any, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ message: "No file uploaded" });
@@ -492,7 +516,7 @@ export async function registerRoutes(
   });
 
   // Image Compress Tool
-  app.post("/api/tools/image-compress", isAuthenticated, upload.single("file"), async (req: any, res) => {
+  app.post("/api/tools/image-compress", upload.single("file"), async (req: any, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ message: "No file uploaded" });
@@ -515,7 +539,7 @@ export async function registerRoutes(
   });
 
   // Image Resize Tool
-  app.post("/api/tools/image-resize", isAuthenticated, upload.single("file"), async (req: any, res) => {
+  app.post("/api/tools/image-resize", upload.single("file"), async (req: any, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ message: "No file uploaded" });
@@ -543,7 +567,7 @@ export async function registerRoutes(
   });
 
   // Image Convert Tool
-  app.post("/api/tools/image-convert", isAuthenticated, upload.single("file"), async (req: any, res) => {
+  app.post("/api/tools/image-convert", upload.single("file"), async (req: any, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ message: "No file uploaded" });
@@ -569,7 +593,7 @@ export async function registerRoutes(
   });
 
   // Background Remove Tool
-  app.post("/api/tools/bg-remove", isAuthenticated, upload.single("file"), async (req: any, res) => {
+  app.post("/api/tools/bg-remove", upload.single("file"), async (req: any, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ message: "No file uploaded" });
@@ -591,7 +615,7 @@ export async function registerRoutes(
   });
 
   // CSV to Excel Tool
-  app.post("/api/tools/csv-to-excel", isAuthenticated, upload.single("file"), async (req: any, res) => {
+  app.post("/api/tools/csv-to-excel", upload.single("file"), async (req: any, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ message: "No file uploaded" });
@@ -613,7 +637,7 @@ export async function registerRoutes(
   });
 
   // Excel Clean Tool
-  app.post("/api/tools/excel-clean", isAuthenticated, upload.single("file"), async (req: any, res) => {
+  app.post("/api/tools/excel-clean", upload.single("file"), async (req: any, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ message: "No file uploaded" });
@@ -635,7 +659,7 @@ export async function registerRoutes(
   });
 
   // JSON Format Tool
-  app.post("/api/tools/json-format", isAuthenticated, async (req: any, res) => {
+  app.post("/api/tools/json-format", async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.json_format || 1);
@@ -658,7 +682,7 @@ export async function registerRoutes(
   });
 
   // Download processed file
-  app.get("/api/tools/download/:filename", isAuthenticated, async (req: any, res) => {
+  app.get("/api/tools/download/:filename", async (req: any, res) => {
     try {
       const { filename } = req.params;
       const uploadDir = path.join(process.cwd(), "uploads");
@@ -680,7 +704,7 @@ export async function registerRoutes(
   });
 
   // AI Resume Analyzer
-  app.post("/api/ai/resume", isAuthenticated, upload.single("file"), async (req: any, res) => {
+  app.post("/api/ai/resume", upload.single("file"), async (req: any, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ message: "No file uploaded" });
@@ -789,7 +813,7 @@ Return ONLY valid JSON, no additional text.`,
   });
 
   // AI Legal Risk Detector
-  app.post("/api/ai/legal", isAuthenticated, upload.single("file"), async (req: any, res) => {
+  app.post("/api/ai/legal", upload.single("file"), async (req: any, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ message: "No file uploaded" });
@@ -899,7 +923,7 @@ Return ONLY valid JSON, no additional text.`,
   });
 
   // AI Data Cleaner
-  app.post("/api/ai/data-clean", isAuthenticated, upload.single("file"), async (req: any, res) => {
+  app.post("/api/ai/data-clean", upload.single("file"), async (req: any, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ message: "No file uploaded" });
@@ -1014,7 +1038,7 @@ Return ONLY valid JSON, no additional text.`,
   });
 
   // Voice to Document (text-based for now - accepts transcribed text)
-  app.post("/api/ai/voice-to-doc", isAuthenticated, async (req: any, res) => {
+  app.post("/api/ai/voice-to-doc", async (req: any, res) => {
     try {
       const { text, format } = req.body;
       const userId = req.user.claims.sub;
