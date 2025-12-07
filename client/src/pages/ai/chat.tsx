@@ -154,21 +154,16 @@ export default function AIChat() {
     setIsLoading(true);
 
     try {
-      const response = await apiRequest("/api/ai/chat", {
-        method: "POST",
-        body: JSON.stringify({
-          fileId,
-          message: messageContent,
-        }),
-        headers: {
-          "Content-Type": "application/json",
-        },
+      const response = await apiRequest("POST", "/api/ai/chat", {
+        fileId,
+        message: messageContent,
       });
+      const data = await response.json();
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: response.response || "I couldn't generate a response. Please try again.",
+        content: data.response || "I couldn't generate a response. Please try again.",
         timestamp: new Date(),
       };
 
