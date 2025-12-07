@@ -243,8 +243,12 @@ export async function removeBackground(
     const baseName = path.basename(inputPath).replace(/\.[^/.]+$/, "");
     const outputPath = path.join(outputDir, `${baseName}_nobg.png`);
     
-    const imageBuffer = fs.readFileSync(inputPath);
-    const imageBlob = new Blob([imageBuffer]);
+    // First convert to PNG using sharp for consistent format
+    const pngBuffer = await sharp(inputPath)
+      .png()
+      .toBuffer();
+    
+    const imageBlob = new Blob([pngBuffer], { type: "image/png" });
     
     const resultBlob = await imglyRemoveBackground(imageBlob, {
       model: "small",
