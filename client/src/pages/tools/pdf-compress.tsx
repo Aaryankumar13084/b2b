@@ -18,6 +18,7 @@ export default function PdfCompress() {
   const [compressionLevel, setCompressionLevel] = useState([50]);
   const [originalSize, setOriginalSize] = useState(0);
   const [compressedSize, setCompressedSize] = useState(0);
+  const [result, setResult] = useState<any>(null);
   const { toast } = useToast();
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -59,41 +60,52 @@ export default function PdfCompress() {
     if (!file) return;
     
     setUploadState("uploading");
-    setProgress(0);
+    setProgress(20);
 
-    const uploadInterval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 40) {
-          clearInterval(uploadInterval);
-          return prev;
-        }
-        return prev + 10;
-      });
-    }, 200);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("quality", compressionLevel[0].toString());
 
-    setTimeout(() => {
+      setProgress(50);
       setUploadState("processing");
-      const processInterval = setInterval(() => {
-        setProgress((prev) => {
-          if (prev >= 100) {
-            clearInterval(processInterval);
-            setUploadState("complete");
-            // Simulate compression result based on level
-            const reduction = compressionLevel[0] / 100;
-            setCompressedSize(Math.floor(originalSize * (1 - reduction * 0.7)));
-            return 100;
-          }
-          return prev + 15;
-        });
-      }, 300);
-    }, 1000);
+
+      const response = await fetch("/api/tools/pdf-compress", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+
+      setProgress(100);
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to compress PDF");
+      }
+
+      const data = await response.json();
+      setResult(data);
+      setCompressedSize(data.metadata?.compressedSize || Math.floor(originalSize * 0.7));
+      setUploadState("complete");
+      toast({
+        title: "PDF Compressed",
+        description: `Reduced by ${data.metadata?.reduction || 30}%`,
+      });
+    } catch (error: any) {
+      setUploadState("error");
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
   };
 
   const handleDownload = () => {
-    toast({
-      title: "Download started",
-      description: "Your compressed PDF is being downloaded",
-    });
+    if (result?.outputPath) {
+      const filename = result.outputPath.split("/").pop();
+      window.open(`/api/tools/download/${filename}`, "_blank");
+    }
   };
 
   const resetUpload = () => {
@@ -102,6 +114,7 @@ export default function PdfCompress() {
     setProgress(0);
     setOriginalSize(0);
     setCompressedSize(0);
+    setResult(null);
   };
 
   const formatFileSize = (bytes: number) => {

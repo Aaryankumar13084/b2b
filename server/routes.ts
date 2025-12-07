@@ -523,6 +523,96 @@ export async function registerRoutes(
     }
   });
 
+  // PDF Merge Tool
+  app.post("/api/tools/pdf-merge", upload.array("files", 20), async (req: any, res) => {
+    try {
+      if (!req.files || req.files.length < 2) {
+        return res.status(400).json({ message: "At least 2 PDF files are required" });
+      }
+      const userId = req.user.claims.sub;
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.pdf_merge || 1);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+      const filePaths = req.files.map((f: any) => f.path);
+      const result = await processing.mergePdfs(filePaths);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error merging PDFs:", error);
+      res.status(500).json({ message: error.message || "Failed to merge PDFs" });
+    }
+  });
+
+  // PDF Compress Tool
+  app.post("/api/tools/pdf-compress", upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      const userId = req.user.claims.sub;
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.pdf_compress || 1);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+      const quality = parseInt(req.body.quality) || 50;
+      const result = await processing.compressPdf(req.file.path, quality);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error compressing PDF:", error);
+      res.status(500).json({ message: error.message || "Failed to compress PDF" });
+    }
+  });
+
+  // PDF to Word Tool
+  app.post("/api/tools/pdf-to-word", upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      const userId = req.user.claims.sub;
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.pdf_to_word || 1);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+      const result = await processing.convertPdfToWord(req.file.path);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error converting PDF to Word:", error);
+      res.status(500).json({ message: error.message || "Failed to convert PDF to Word" });
+    }
+  });
+
+  // Word to PDF Tool
+  app.post("/api/tools/word-to-pdf", upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      const userId = req.user.claims.sub;
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.word_to_pdf || 1);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+      const result = await processing.convertWordToPdf(req.file.path);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error converting Word to PDF:", error);
+      res.status(500).json({ message: error.message || "Failed to convert Word to PDF" });
+    }
+  });
+
   // Image Compress Tool
   app.post("/api/tools/image-compress", upload.single("file"), async (req: any, res) => {
     try {

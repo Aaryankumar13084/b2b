@@ -13,6 +13,7 @@ export default function PdfToWord() {
   const [file, setFile] = useState<File | null>(null);
   const [uploadState, setUploadState] = useState<UploadState>("idle");
   const [progress, setProgress] = useState(0);
+  const [result, setResult] = useState<any>(null);
   const { toast } = useToast();
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -52,46 +53,57 @@ export default function PdfToWord() {
     if (!file) return;
     
     setUploadState("uploading");
-    setProgress(0);
+    setProgress(20);
 
-    // Simulate upload progress
-    const uploadInterval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 40) {
-          clearInterval(uploadInterval);
-          return prev;
-        }
-        return prev + 10;
-      });
-    }, 200);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
 
-    // Simulate processing
-    setTimeout(() => {
+      setProgress(50);
       setUploadState("processing");
-      const processInterval = setInterval(() => {
-        setProgress((prev) => {
-          if (prev >= 100) {
-            clearInterval(processInterval);
-            setUploadState("complete");
-            return 100;
-          }
-          return prev + 15;
-        });
-      }, 300);
-    }, 1000);
+
+      const response = await fetch("/api/tools/pdf-to-word", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+
+      setProgress(100);
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to convert PDF to Word");
+      }
+
+      const data = await response.json();
+      setResult(data);
+      setUploadState("complete");
+      toast({
+        title: "Conversion Complete",
+        description: "Your Word document is ready",
+      });
+    } catch (error: any) {
+      setUploadState("error");
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
   };
 
   const handleDownload = () => {
-    toast({
-      title: "Download started",
-      description: "Your converted file is being downloaded",
-    });
+    if (result?.outputPath) {
+      const filename = result.outputPath.split("/").pop();
+      window.open(`/api/tools/download/${filename}`, "_blank");
+    }
   };
 
   const resetUpload = () => {
     setFile(null);
     setUploadState("idle");
     setProgress(0);
+    setResult(null);
   };
 
   return (

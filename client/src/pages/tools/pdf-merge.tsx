@@ -18,6 +18,7 @@ export default function PdfMerge() {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [uploadState, setUploadState] = useState<UploadState>("idle");
   const [progress, setProgress] = useState(0);
+  const [result, setResult] = useState<any>(null);
   const { toast } = useToast();
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -74,44 +75,59 @@ export default function PdfMerge() {
     }
     
     setUploadState("uploading");
-    setProgress(0);
+    setProgress(20);
 
-    const uploadInterval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 40) {
-          clearInterval(uploadInterval);
-          return prev;
-        }
-        return prev + 10;
+    try {
+      const formData = new FormData();
+      files.forEach((item) => {
+        formData.append("files", item.file);
       });
-    }, 200);
 
-    setTimeout(() => {
+      setProgress(50);
       setUploadState("processing");
-      const processInterval = setInterval(() => {
-        setProgress((prev) => {
-          if (prev >= 100) {
-            clearInterval(processInterval);
-            setUploadState("complete");
-            return 100;
-          }
-          return prev + 15;
-        });
-      }, 300);
-    }, 1000);
+
+      const response = await fetch("/api/tools/pdf-merge", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+
+      setProgress(100);
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to merge PDFs");
+      }
+
+      const data = await response.json();
+      setResult(data);
+      setUploadState("complete");
+      toast({
+        title: "PDFs Merged",
+        description: `Successfully merged ${files.length} files`,
+      });
+    } catch (error: any) {
+      setUploadState("error");
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
   };
 
   const handleDownload = () => {
-    toast({
-      title: "Download started",
-      description: "Your merged PDF is being downloaded",
-    });
+    if (result?.outputPath) {
+      const filename = result.outputPath.split("/").pop();
+      window.open(`/api/tools/download/${filename}`, "_blank");
+    }
   };
 
   const resetUpload = () => {
     setFiles([]);
     setUploadState("idle");
     setProgress(0);
+    setResult(null);
   };
 
   return (

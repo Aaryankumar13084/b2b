@@ -1,4 +1,4 @@
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, StandardFonts } from "pdf-lib";
 import sharp from "sharp";
 import ExcelJS from "exceljs";
 import * as XLSX from "xlsx";
@@ -738,6 +738,115 @@ export async function compressPdf(
         compressedSize,
         reduction: Math.round((1 - compressedSize / originalSize) * 100),
       },
+    };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function convertPdfToWord(inputPath: string): Promise<ProcessingResult> {
+  try {
+    const pdfParse = await import("pdf-parse");
+    const { Document, Packer, Paragraph, TextRun } = await import("docx");
+    
+    const pdfBuffer = fs.readFileSync(inputPath);
+    const pdfData = await pdfParse.default(pdfBuffer);
+    
+    const textContent = pdfData.text || "";
+    const paragraphs = textContent.split("\n\n").filter((p: string) => p.trim());
+    
+    const doc = new Document({
+      sections: [{
+        properties: {},
+        children: paragraphs.map((text: string) => 
+          new Paragraph({
+            children: [new TextRun(text.trim())],
+          })
+        ),
+      }],
+    });
+    
+    const outputDir = path.dirname(inputPath);
+    const baseName = path.basename(inputPath, ".pdf");
+    const outputPath = path.join(outputDir, `${baseName}.docx`);
+    
+    const buffer = await Packer.toBuffer(doc);
+    fs.writeFileSync(outputPath, buffer);
+    
+    return {
+      success: true,
+      outputPath,
+      outputName: `${baseName}.docx`,
+      metadata: { pageCount: pdfData.numpages, textLength: textContent.length },
+    };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function convertWordToPdf(inputPath: string): Promise<ProcessingResult> {
+  try {
+    const mammoth = await import("mammoth");
+    
+    const result = await mammoth.extractRawText({ path: inputPath });
+    const textContent = result.value || "";
+    
+    const paragraphs = textContent.split("\n\n").filter((p: string) => p.trim());
+    
+    const pdfDoc = await PDFDocument.create();
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    
+    let page = pdfDoc.addPage([612, 792]);
+    const { height } = page.getSize();
+    let yOffset = height - 50;
+    const margin = 50;
+    const lineHeight = 14;
+    const maxWidth = 612 - 2 * margin;
+    
+    for (const paragraph of paragraphs) {
+      const words = paragraph.split(" ");
+      let line = "";
+      
+      for (const word of words) {
+        const testLine = line ? `${line} ${word}` : word;
+        const textWidth = font.widthOfTextAtSize(testLine, 12);
+        
+        if (textWidth > maxWidth) {
+          if (yOffset < 50) {
+            page = pdfDoc.addPage([612, 792]);
+            yOffset = height - 50;
+          }
+          page.drawText(line, { x: margin, y: yOffset, size: 12, font });
+          yOffset -= lineHeight;
+          line = word;
+        } else {
+          line = testLine;
+        }
+      }
+      
+      if (line) {
+        if (yOffset < 50) {
+          page = pdfDoc.addPage([612, 792]);
+          yOffset = height - 50;
+        }
+        page.drawText(line, { x: margin, y: yOffset, size: 12, font });
+        yOffset -= lineHeight * 1.5;
+      }
+    }
+    
+    const outputDir = path.dirname(inputPath);
+    const ext = path.extname(inputPath);
+    const baseName = path.basename(inputPath, ext);
+    const outputPath = path.join(outputDir, `${baseName}.pdf`);
+    
+    const pdfBytes = await pdfDoc.save();
+    fs.writeFileSync(outputPath, pdfBytes);
+    
+    return {
+      success: true,
+      outputPath,
+      outputName: `${baseName}.pdf`,
+      metadata: { pageCount: pdfDoc.getPageCount() },
     };
   } catch (error: any) {
     return { success: false, error: error.message };
