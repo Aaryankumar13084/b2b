@@ -66,6 +66,7 @@
     "mammoth": "^1.11.0",
     "memoizee": "^0.4.17",
     "memorystore": "^1.6.7",
+    "muhammara": "^6.0.0",
     "multer": "^2.0.2",
     "next-themes": "^0.4.6",
     "openid-client": "^6.8.1",

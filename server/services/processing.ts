@@ -84,19 +84,17 @@ export async function lockPdf(
   password: string
 ): Promise<ProcessingResult> {
   try {
-    const pdfBytes = fs.readFileSync(inputPath);
-    const pdfDoc = await PDFDocument.load(pdfBytes);
+    const muhammara = await import("muhammara");
     
     const outputDir = path.dirname(inputPath);
     const baseName = path.basename(inputPath, ".pdf");
     const outputPath = path.join(outputDir, `${baseName}_locked.pdf`);
     
-    const encryptedBytes = await pdfDoc.save({
+    muhammara.recrypt(inputPath, outputPath, {
       userPassword: password,
       ownerPassword: password,
+      userProtectionFlag: 4,
     });
-    
-    fs.writeFileSync(outputPath, encryptedBytes);
     
     return {
       success: true,
@@ -113,15 +111,15 @@ export async function unlockPdf(
   password: string
 ): Promise<ProcessingResult> {
   try {
-    const pdfBytes = fs.readFileSync(inputPath);
-    const pdfDoc = await PDFDocument.load(pdfBytes, { password });
+    const muhammara = await import("muhammara");
     
     const outputDir = path.dirname(inputPath);
     const baseName = path.basename(inputPath, ".pdf");
     const outputPath = path.join(outputDir, `${baseName}_unlocked.pdf`);
     
-    const unlockedBytes = await pdfDoc.save();
-    fs.writeFileSync(outputPath, unlockedBytes);
+    muhammara.recrypt(inputPath, outputPath, {
+      password: password,
+    });
     
     return {
       success: true,
@@ -129,7 +127,7 @@ export async function unlockPdf(
       outputName: `${baseName}_unlocked.pdf`,
     };
   } catch (error: any) {
-    if (error.message.includes("password")) {
+    if (error.message.includes("password") || error.message.includes("decrypt")) {
       return { success: false, error: "Incorrect password" };
     }
     return { success: false, error: error.message };
