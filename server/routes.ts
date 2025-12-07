@@ -8,8 +8,7 @@ import path from "path";
 import fs from "fs";
 import Groq from "groq-sdk";
 import * as processing from "./services/processing";
-import * as pdfParseModule from "pdf-parse";
-const pdfParse = (pdfParseModule as any).default || pdfParseModule;
+import { PDFParse } from "pdf-parse";
 import mammoth from "mammoth";
 import * as XLSX from "xlsx";
 
@@ -43,9 +42,11 @@ async function extractTextFromFile(filePath: string, mimeType?: string): Promise
   
   try {
     if (ext === ".pdf" || mime.includes("pdf")) {
-      const dataBuffer = fs.readFileSync(filePath);
-      const pdfData = await pdfParse(dataBuffer);
-      return pdfData.text || "";
+      const buffer = fs.readFileSync(filePath);
+      const parser = new PDFParse({ data: buffer });
+      const result = await parser.getText();
+      await parser.destroy();
+      return result.text || "";
     }
     
     if (ext === ".docx" || mime.includes("wordprocessingml") || mime.includes("msword")) {
