@@ -85,12 +85,13 @@ export async function lockPdf(
 ): Promise<ProcessingResult> {
   try {
     const muhammara = await import("muhammara");
+    const recrypt = muhammara.recrypt || muhammara.default?.recrypt;
     
     const outputDir = path.dirname(inputPath);
     const baseName = path.basename(inputPath, ".pdf");
     const outputPath = path.join(outputDir, `${baseName}_locked.pdf`);
     
-    muhammara.recrypt(inputPath, outputPath, {
+    recrypt(inputPath, outputPath, {
       userPassword: password,
       ownerPassword: password,
       userProtectionFlag: 4,
@@ -112,12 +113,13 @@ export async function unlockPdf(
 ): Promise<ProcessingResult> {
   try {
     const muhammara = await import("muhammara");
+    const recrypt = muhammara.recrypt || muhammara.default?.recrypt;
     
     const outputDir = path.dirname(inputPath);
     const baseName = path.basename(inputPath, ".pdf");
     const outputPath = path.join(outputDir, `${baseName}_unlocked.pdf`);
     
-    muhammara.recrypt(inputPath, outputPath, {
+    recrypt(inputPath, outputPath, {
       password: password,
     });
     
