@@ -592,18 +592,33 @@ export async function registerRoutes(
     }
   });
 
-  // Background Remove Tool
+  // Background Remove Tool - Industry-Grade with Advanced Options
   app.post("/api/tools/bg-remove", upload.single("file"), async (req: any, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ message: "No file uploaded" });
       }
       const userId = req.user.claims.sub;
-      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.bg_remove || 2);
+      
+      const qualityMode = req.body.qualityMode || "balanced";
+      const upscale = req.body.upscale || "none";
+      const creditCost = upscale === "2x" ? 4 : (qualityMode === "ultra" ? 3 : 2);
+      
+      const creditCheck = await storage.checkAndUpdateCredits(userId, creditCost);
       if (!creditCheck.allowed) {
         return res.status(429).json({ message: creditCheck.message });
       }
-      const result = await processing.removeBackground(req.file.path);
+      
+      const options = {
+        qualityMode: qualityMode as "fast" | "balanced" | "ultra",
+        edgeRefinement: req.body.edgeRefinement !== "false",
+        shadowRemoval: req.body.shadowRemoval !== "false",
+        colorEnhancement: req.body.colorEnhancement !== "false",
+        sharpening: req.body.sharpening !== "false",
+        upscale: upscale as "none" | "2x",
+      };
+      
+      const result = await processing.removeBackground(req.file.path, options);
       if (!result.success) {
         return res.status(400).json({ message: result.error });
       }

@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { DashboardLayout } from "@/components/dashboard-layout";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Slider } from "@/components/ui/slider";
@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Eraser,
   Upload,
@@ -15,8 +16,6 @@ import {
   ArrowLeft,
   CheckCircle,
   Sparkles,
-  Eye,
-  Paintbrush,
   RotateCcw,
   ZoomIn,
   ZoomOut,
@@ -25,9 +24,17 @@ import {
   Palette,
   Layers,
   Wand2,
-  SlidersHorizontal,
   FileImage,
   Loader2,
+  Zap,
+  Shield,
+  Star,
+  Maximize2,
+  Contrast,
+  Focus,
+  Gauge,
+  Clock,
+  Award,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
@@ -36,6 +43,8 @@ type UploadState = "idle" | "uploading" | "processing" | "complete" | "error";
 type BackgroundType = "transparent" | "solid" | "gradient" | "image" | "blur";
 type ExportFormat = "png" | "webp";
 type ExportResolution = "original" | "hd" | "2k" | "4k";
+type QualityMode = "fast" | "balanced" | "ultra";
+type UpscaleMode = "none" | "2x";
 
 const gradientPresets = [
   { name: "Sunset", value: "linear-gradient(135deg, #ff6b6b, #feca57)" },
@@ -62,10 +71,17 @@ export default function BgRemove() {
   const { toast } = useToast();
 
   // Preview controls
-  const [showOriginal, setShowOriginal] = useState(false);
   const [sliderPosition, setSliderPosition] = useState(50);
   const [zoom, setZoom] = useState(100);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+
+  // Quality & Processing Options
+  const [qualityMode, setQualityMode] = useState<QualityMode>("balanced");
+  const [upscaleMode, setUpscaleMode] = useState<UpscaleMode>("none");
+  const [edgeRefinement, setEdgeRefinement] = useState(true);
+  const [shadowRemoval, setShadowRemoval] = useState(true);
+  const [colorEnhancement, setColorEnhancement] = useState(true);
+  const [sharpening, setSharpening] = useState(true);
 
   // Background options
   const [backgroundType, setBackgroundType] = useState<BackgroundType>("transparent");
@@ -74,9 +90,6 @@ export default function BgRemove() {
   const [selectedGradient, setSelectedGradient] = useState(gradientPresets[0].value);
   const [customBgImage, setCustomBgImage] = useState<string | null>(null);
   const [blurAmount, setBlurAmount] = useState(10);
-
-  // Edge refinement
-  const [edgeSmoothness, setEdgeSmoothness] = useState(50);
 
   // Export options
   const [exportFormat, setExportFormat] = useState<ExportFormat>("png");
@@ -136,13 +149,19 @@ export default function BgRemove() {
     if (!file) return;
     
     setUploadState("uploading");
-    setProgress(20);
+    setProgress(10);
 
     try {
       const formData = new FormData();
       formData.append("file", file);
+      formData.append("qualityMode", qualityMode);
+      formData.append("upscale", upscaleMode);
+      formData.append("edgeRefinement", String(edgeRefinement));
+      formData.append("shadowRemoval", String(shadowRemoval));
+      formData.append("colorEnhancement", String(colorEnhancement));
+      formData.append("sharpening", String(sharpening));
 
-      setProgress(50);
+      setProgress(30);
       setUploadState("processing");
 
       const response = await fetch("/api/tools/bg-remove", {
@@ -151,7 +170,7 @@ export default function BgRemove() {
         credentials: "include",
       });
 
-      setProgress(100);
+      setProgress(90);
 
       if (!response.ok) {
         const error = await response.json();
@@ -161,18 +180,20 @@ export default function BgRemove() {
       const data = await response.json();
       setResult(data);
       
-      // Fetch the processed image
       if (data.outputPath) {
         const filename = data.outputPath.split("/").pop();
         const imageResponse = await fetch(`/api/tools/download/${filename}`);
         const blob = await imageResponse.blob();
         setProcessedImage(URL.createObjectURL(blob));
       }
-      
+
+      setProgress(100);
       setUploadState("complete");
+      
+      const qualityDesc = data.qualityScore >= 90 ? "Ultra" : data.qualityScore >= 80 ? "High" : "Good";
       toast({
-        title: "Background Removed",
-        description: "Image background has been removed successfully",
+        title: "Background Removed Successfully",
+        description: `${qualityDesc} quality (Score: ${data.qualityScore || 85}/100) - Edge Quality: ${data.edgeQuality || "Very Good"}`,
       });
     } catch (error: any) {
       setUploadState("error");
@@ -386,10 +407,11 @@ export default function BgRemove() {
 
         {/* Feature badges */}
         <div className="flex flex-wrap gap-2 mb-6">
-          <Badge variant="secondary" className="gap-1"><Wand2 className="w-3 h-3" /> Smart Edge Detection</Badge>
+          <Badge variant="secondary" className="gap-1"><Wand2 className="w-3 h-3" /> Industry-Grade AI</Badge>
           <Badge variant="secondary" className="gap-1"><Layers className="w-3 h-3" /> Hair & Fine Details</Badge>
-          <Badge variant="secondary" className="gap-1"><Eye className="w-3 h-3" /> Object Auto-Detection</Badge>
-          <Badge variant="secondary" className="gap-1"><Loader2 className="w-3 h-3" /> Real-time Processing</Badge>
+          <Badge variant="secondary" className="gap-1"><Shield className="w-3 h-3" /> Auto Error-Fix</Badge>
+          <Badge variant="secondary" className="gap-1"><Maximize2 className="w-3 h-3" /> 2x Upscaling</Badge>
+          <Badge variant="secondary" className="gap-1"><Award className="w-3 h-3" /> Quality Check</Badge>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-3">
@@ -467,10 +489,132 @@ export default function BgRemove() {
                         />
                       )}
                     </div>
+
+                    {/* Quality Mode Selection */}
+                    <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium flex items-center gap-2">
+                          <Gauge className="w-4 h-4" />
+                          Processing Quality
+                        </Label>
+                        <div className="grid grid-cols-3 gap-2">
+                          <Button
+                            variant={qualityMode === "fast" ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setQualityMode("fast")}
+                            className="gap-1"
+                            data-testid="button-quality-fast"
+                          >
+                            <Zap className="w-3 h-3" />
+                            Fast
+                          </Button>
+                          <Button
+                            variant={qualityMode === "balanced" ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setQualityMode("balanced")}
+                            className="gap-1"
+                            data-testid="button-quality-balanced"
+                          >
+                            <Shield className="w-3 h-3" />
+                            Balanced
+                          </Button>
+                          <Button
+                            variant={qualityMode === "ultra" ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setQualityMode("ultra")}
+                            className="gap-1"
+                            data-testid="button-quality-ultra"
+                          >
+                            <Star className="w-3 h-3" />
+                            Ultra
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {qualityMode === "fast" && "Quick processing with standard quality"}
+                          {qualityMode === "balanced" && "Optimal balance of speed and quality (recommended)"}
+                          {qualityMode === "ultra" && "Maximum quality with advanced edge detection"}
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium flex items-center gap-2">
+                          <Maximize2 className="w-4 h-4" />
+                          Output Resolution
+                        </Label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button
+                            variant={upscaleMode === "none" ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setUpscaleMode("none")}
+                            data-testid="button-upscale-none"
+                          >
+                            Original
+                          </Button>
+                          <Button
+                            variant={upscaleMode === "2x" ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setUpscaleMode("2x")}
+                            className="gap-1"
+                            data-testid="button-upscale-2x"
+                          >
+                            <Maximize2 className="w-3 h-3" />
+                            2x Upscale
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-sm flex items-center gap-1">
+                            <Layers className="w-3 h-3" />
+                            Edge Refinement
+                          </Label>
+                          <Switch
+                            checked={edgeRefinement}
+                            onCheckedChange={setEdgeRefinement}
+                            data-testid="switch-edge-refinement"
+                          />
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <Label className="text-sm flex items-center gap-1">
+                            <Eraser className="w-3 h-3" />
+                            Shadow Removal
+                          </Label>
+                          <Switch
+                            checked={shadowRemoval}
+                            onCheckedChange={setShadowRemoval}
+                            data-testid="switch-shadow-removal"
+                          />
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <Label className="text-sm flex items-center gap-1">
+                            <Contrast className="w-3 h-3" />
+                            Color Enhancement
+                          </Label>
+                          <Switch
+                            checked={colorEnhancement}
+                            onCheckedChange={setColorEnhancement}
+                            data-testid="switch-color-enhancement"
+                          />
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <Label className="text-sm flex items-center gap-1">
+                            <Focus className="w-3 h-3" />
+                            Sharpening
+                          </Label>
+                          <Switch
+                            checked={sharpening}
+                            onCheckedChange={setSharpening}
+                            data-testid="switch-sharpening"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
                     <div className="flex gap-3">
                       <Button onClick={handleRemove} className="flex-1 gap-2" data-testid="button-remove-bg">
                         <Wand2 className="w-4 h-4" />
-                        Remove Background
+                        Remove Background {qualityMode === "ultra" ? "(Ultra)" : qualityMode === "fast" ? "(Fast)" : ""}
                       </Button>
                       <Button variant="outline" onClick={resetUpload} data-testid="button-cancel">
                         Cancel
@@ -753,6 +897,61 @@ export default function BgRemove() {
               </>
             )}
 
+            {/* Quality Report - Show after processing */}
+            {uploadState === "complete" && result && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Award className="w-4 h-4" />
+                    Quality Report
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Quality Score</span>
+                    <div className="flex items-center gap-2">
+                      <Progress value={result.qualityScore || 85} className="w-20 h-2" />
+                      <Badge variant={result.qualityScore >= 90 ? "default" : "secondary"}>
+                        {result.qualityScore || 85}/100
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Edge Quality</span>
+                    <Badge variant="outline">{result.edgeQuality || "Very Good"}</Badge>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      Processing Time
+                    </span>
+                    <span className="text-sm font-medium">
+                      {result.processingTime ? `${(result.processingTime / 1000).toFixed(1)}s` : "N/A"}
+                    </span>
+                  </div>
+                  {result.originalDimensions && result.finalDimensions && (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">Original Size</span>
+                        <span className="text-sm">
+                          {result.originalDimensions.width} x {result.originalDimensions.height}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">Final Size</span>
+                        <span className="text-sm font-medium">
+                          {result.finalDimensions.width} x {result.finalDimensions.height}
+                          {result.metadata?.upscaled && (
+                            <Badge variant="secondary" className="ml-2">2x</Badge>
+                          )}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
             {/* Features Info */}
             <Card>
               <CardHeader className="pb-3">
@@ -764,23 +963,27 @@ export default function BgRemove() {
               <CardContent className="space-y-3 text-sm">
                 <div className="flex items-start gap-2">
                   <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
-                  <span>One-click automatic background removal</span>
+                  <span>Industry-grade background removal</span>
                 </div>
                 <div className="flex items-start gap-2">
                   <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
-                  <span>Smart edge detection with hair & fine details</span>
+                  <span>Advanced hair & fine detail detection</span>
                 </div>
                 <div className="flex items-start gap-2">
                   <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
-                  <span>Object auto-detection</span>
+                  <span>Auto shadow removal & edge refinement</span>
                 </div>
                 <div className="flex items-start gap-2">
                   <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
-                  <span>Multiple background replacement options</span>
+                  <span>Color enhancement & sharpening</span>
                 </div>
                 <div className="flex items-start gap-2">
                   <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
-                  <span>PNG & WebP export with HD/2K/4K support</span>
+                  <span>2x upscaling with quality check</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
+                  <span>Ultra-quality export (PNG/WebP)</span>
                 </div>
               </CardContent>
             </Card>

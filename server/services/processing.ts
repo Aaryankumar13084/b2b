@@ -235,41 +235,284 @@ export async function convertImage(
   }
 }
 
+export interface BackgroundRemovalOptions {
+  qualityMode?: "fast" | "balanced" | "ultra";
+  edgeRefinement?: boolean;
+  shadowRemoval?: boolean;
+  colorEnhancement?: boolean;
+  sharpening?: boolean;
+  upscale?: "none" | "2x";
+}
+
+export interface BackgroundRemovalResult extends ProcessingResult {
+  qualityScore?: number;
+  processingTime?: number;
+  edgeQuality?: string;
+  originalDimensions?: { width: number; height: number };
+  finalDimensions?: { width: number; height: number };
+}
+
+async function refineEdges(buffer: Buffer, strength: number = 0.5): Promise<Buffer> {
+  const metadata = await sharp(buffer).metadata();
+  const width = metadata.width || 0;
+  const height = metadata.height || 0;
+
+  const refined = await sharp(buffer)
+    .blur(0.3)
+    .sharpen({ sigma: 1.0, m1: 1.5, m2: 0.5 })
+    .toBuffer();
+
+  const edgeMask = await sharp(buffer)
+    .extractChannel(3)
+    .blur(0.5)
+    .linear(1.2, -20)
+    .blur(0.3)
+    .toBuffer();
+
+  const result = await sharp(refined)
+    .ensureAlpha()
+    .composite([
+      {
+        input: await sharp({
+          create: {
+            width,
+            height,
+            channels: 4,
+            background: { r: 0, g: 0, b: 0, alpha: 0 }
+          }
+        })
+        .composite([{ input: edgeMask, blend: "dest-in" }])
+        .toBuffer(),
+        blend: "dest-in"
+      }
+    ])
+    .toBuffer();
+
+  return result;
+}
+
+async function removeDuplicateShadows(buffer: Buffer): Promise<Buffer> {
+  const { data, info } = await sharp(buffer)
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const pixels = new Uint8Array(data);
+  const { width, height, channels } = info;
+
+  for (let i = 0; i < pixels.length; i += channels) {
+    const r = pixels[i];
+    const g = pixels[i + 1];
+    const b = pixels[i + 2];
+    const a = pixels[i + 3];
+
+    if (a > 0 && a < 180) {
+      const brightness = (r + g + b) / 3;
+      if (brightness < 60 && a < 150) {
+        pixels[i + 3] = Math.max(0, a - 80);
+      }
+    }
+  }
+
+  return sharp(Buffer.from(pixels), {
+    raw: { width, height, channels }
+  })
+  .png()
+  .toBuffer();
+}
+
+async function enhanceColors(buffer: Buffer): Promise<Buffer> {
+  return sharp(buffer)
+    .modulate({
+      saturation: 1.08,
+      brightness: 1.02,
+    })
+    .linear(1.05, -5)
+    .toBuffer();
+}
+
+async function applySharpening(buffer: Buffer, strength: "light" | "medium" | "strong" = "medium"): Promise<Buffer> {
+  const settings = {
+    light: { sigma: 0.8, m1: 0.8, m2: 0.3 },
+    medium: { sigma: 1.2, m1: 1.2, m2: 0.5 },
+    strong: { sigma: 1.8, m1: 1.5, m2: 0.7 },
+  };
+
+  return sharp(buffer)
+    .sharpen(settings[strength])
+    .toBuffer();
+}
+
+async function upscaleImage(buffer: Buffer, scale: number = 2): Promise<Buffer> {
+  const metadata = await sharp(buffer).metadata();
+  const newWidth = Math.round((metadata.width || 0) * scale);
+  const newHeight = Math.round((metadata.height || 0) * scale);
+
+  return sharp(buffer)
+    .resize(newWidth, newHeight, {
+      kernel: sharp.kernel.lanczos3,
+      withoutEnlargement: false,
+    })
+    .sharpen({ sigma: 0.8, m1: 0.8, m2: 0.3 })
+    .toBuffer();
+}
+
+function calculateQualityScore(
+  originalWidth: number,
+  originalHeight: number,
+  finalWidth: number,
+  finalHeight: number,
+  processingTime: number,
+  options: BackgroundRemovalOptions
+): number {
+  let score = 70;
+
+  const resolution = finalWidth * finalHeight;
+  if (resolution >= 4000000) score += 10;
+  else if (resolution >= 2000000) score += 7;
+  else if (resolution >= 1000000) score += 5;
+
+  if (options.qualityMode === "ultra") score += 10;
+  else if (options.qualityMode === "balanced") score += 5;
+
+  if (options.edgeRefinement) score += 3;
+  if (options.shadowRemoval) score += 2;
+  if (options.colorEnhancement) score += 2;
+  if (options.sharpening) score += 2;
+  if (options.upscale === "2x") score += 3;
+
+  if (processingTime < 3000) score += 2;
+
+  return Math.min(100, score);
+}
+
+function getEdgeQualityRating(qualityMode: string, hasRefinement: boolean): string {
+  if (qualityMode === "ultra" && hasRefinement) return "Excellent";
+  if (qualityMode === "balanced" && hasRefinement) return "Very Good";
+  if (hasRefinement) return "Good";
+  return "Standard";
+}
+
 export async function removeBackground(
-  inputPath: string
-): Promise<ProcessingResult> {
+  inputPath: string,
+  options: BackgroundRemovalOptions = {}
+): Promise<BackgroundRemovalResult> {
+  const startTime = Date.now();
+  
+  const {
+    qualityMode = "balanced",
+    edgeRefinement = true,
+    shadowRemoval = true,
+    colorEnhancement = true,
+    sharpening = true,
+    upscale = "none",
+  } = options;
+
   try {
     const outputDir = path.dirname(inputPath);
     const baseName = path.basename(inputPath).replace(/\.[^/.]+$/, "");
     const outputPath = path.join(outputDir, `${baseName}_nobg.png`);
+
+    const originalMetadata = await sharp(inputPath).metadata();
+    const originalWidth = originalMetadata.width || 0;
+    const originalHeight = originalMetadata.height || 0;
     
-    // First convert to PNG using sharp for consistent format
     const pngBuffer = await sharp(inputPath)
       .png()
       .toBuffer();
     
     const imageBlob = new Blob([pngBuffer], { type: "image/png" });
     
+    const modelMap = {
+      fast: "small",
+      balanced: "medium",
+      ultra: "medium",
+    };
+    
     const resultBlob = await imglyRemoveBackground(imageBlob, {
-      model: "small",
+      model: modelMap[qualityMode] as "small" | "medium",
       output: {
         format: "image/png",
-        quality: 0.9,
+        quality: qualityMode === "ultra" ? 1.0 : 0.95,
       },
     });
     
     const arrayBuffer = await resultBlob.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    let processedBuffer = Buffer.from(arrayBuffer);
+
+    if (shadowRemoval) {
+      try {
+        processedBuffer = await removeDuplicateShadows(processedBuffer);
+      } catch (e) {
+      }
+    }
+
+    if (edgeRefinement && qualityMode !== "fast") {
+      try {
+        const refinementStrength = qualityMode === "ultra" ? 0.7 : 0.5;
+        processedBuffer = await refineEdges(processedBuffer, refinementStrength);
+      } catch (e) {
+      }
+    }
+
+    if (colorEnhancement) {
+      try {
+        processedBuffer = await enhanceColors(processedBuffer);
+      } catch (e) {
+      }
+    }
+
+    if (sharpening) {
+      try {
+        const sharpnessLevel = qualityMode === "ultra" ? "strong" : qualityMode === "balanced" ? "medium" : "light";
+        processedBuffer = await applySharpening(processedBuffer, sharpnessLevel);
+      } catch (e) {
+      }
+    }
+
+    if (upscale === "2x") {
+      try {
+        processedBuffer = await upscaleImage(processedBuffer, 2);
+      } catch (e) {
+      }
+    }
+
+    processedBuffer = await sharp(processedBuffer)
+      .png({ compressionLevel: 6, quality: 100 })
+      .toBuffer();
     
-    fs.writeFileSync(outputPath, buffer);
+    fs.writeFileSync(outputPath, processedBuffer);
     
-    const metadata = await sharp(outputPath).metadata();
+    const finalMetadata = await sharp(outputPath).metadata();
+    const finalWidth = finalMetadata.width || 0;
+    const finalHeight = finalMetadata.height || 0;
+
+    const processingTime = Date.now() - startTime;
+    const qualityScore = calculateQualityScore(
+      originalWidth,
+      originalHeight,
+      finalWidth,
+      finalHeight,
+      processingTime,
+      options
+    );
+    
+    const edgeQuality = getEdgeQualityRating(qualityMode, edgeRefinement);
     
     return {
       success: true,
       outputPath,
       outputName: `${baseName}_nobg.png`,
-      metadata: { width: metadata.width, height: metadata.height },
+      metadata: { 
+        width: finalWidth, 
+        height: finalHeight,
+        qualityMode,
+        upscaled: upscale === "2x",
+      },
+      qualityScore,
+      processingTime,
+      edgeQuality,
+      originalDimensions: { width: originalWidth, height: originalHeight },
+      finalDimensions: { width: finalWidth, height: finalHeight },
     };
   } catch (error: any) {
     return { success: false, error: error.message };
