@@ -270,7 +270,7 @@ export async function registerRoutes(
 
   app.post("/api/ai/chat", async (req: any, res) => {
     try {
-      const { message, fileId, context } = req.body;
+      const { message, fileId, context, history } = req.body;
       const userId = req.user.claims.sub;
 
       const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.ai_chat);
@@ -300,17 +300,26 @@ IMPORTANT: You MUST answer questions based ONLY on the document content provided
 
 ${documentContext}
 
-When the user asks "what is in this document" or similar questions, provide a summary of the document's actual content. Never give generic explanations about file formats. Always respond in the same language as the user's question.`
+When the user asks "what is in this document" or similar questions, provide a summary of the document's actual content. Never give generic explanations about file formats. Always respond in the same language as the user's question. Remember the context of previous messages in the conversation to provide relevant follow-up answers.`
         : `You are a helpful document assistant. The document could not be read. Please inform the user that the document content is not available and ask them to try uploading again.`;
 
+      const chatMessages: Array<{ role: "system" | "user" | "assistant", content: string }> = [
+        { role: "system", content: systemPrompt + (context || "") },
+      ];
+
+      if (history && Array.isArray(history)) {
+        const recentHistory = history.slice(-10);
+        for (const msg of recentHistory) {
+          if (msg.role === "user" || msg.role === "assistant") {
+            chatMessages.push({ role: msg.role, content: msg.content });
+          }
+        }
+      } else {
+        chatMessages.push({ role: "user", content: message });
+      }
+
       const chatCompletion = await groq.chat.completions.create({
-        messages: [
-          {
-            role: "system",
-            content: systemPrompt + (context || ""),
-          },
-          { role: "user", content: message },
-        ],
+        messages: chatMessages,
         model: "llama-3.1-8b-instant",
         temperature: 0.3,
         max_tokens: 2048,

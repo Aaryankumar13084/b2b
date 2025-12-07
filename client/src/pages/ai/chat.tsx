@@ -148,15 +148,21 @@ export default function AIChat() {
       timestamp: new Date(),
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    const updatedMessages = [...messages, userMessage];
+    setMessages(updatedMessages);
     const messageContent = input.trim();
     setInput("");
     setIsLoading(true);
+
+    const chatHistory = updatedMessages
+      .filter(m => m.id !== "1")
+      .map(m => ({ role: m.role, content: m.content }));
 
     try {
       const response = await apiRequest("POST", "/api/ai/chat", {
         fileId,
         message: messageContent,
+        history: chatHistory,
       });
       const data = await response.json();
 
