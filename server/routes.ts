@@ -297,13 +297,14 @@ export async function registerRoutes(
         messages: [
           {
             role: "system",
-            content: `You are a helpful document assistant. ${documentContext}${context || ""}`,
+            content: `You are a helpful document assistant. Answer questions clearly and accurately based on the document content. Never repeat words or phrases unnecessarily. ${documentContext}${context || ""}`,
           },
           { role: "user", content: message },
         ],
-        model: "llama-3.3-70b-versatile",
-        temperature: 0.7,
+        model: "llama-3.1-8b-instant",
+        temperature: 0.3,
         max_tokens: 2048,
+        top_p: 0.9,
       });
 
       const response = chatCompletion.choices[0]?.message?.content || "";
@@ -361,16 +362,17 @@ export async function registerRoutes(
         messages: [
           {
             role: "system",
-            content: "You are an expert document summarizer. Create concise, accurate summaries that capture the key points.",
+            content: "You are an expert document summarizer. Create concise, accurate summaries that capture the key points. Never repeat words or phrases. Always provide meaningful content based on the document.",
           },
           {
             role: "user",
-            content: `Please summarize the following document:\n\n${content}`,
+            content: `Analyze and summarize this document. Provide a clear, structured summary with key points:\n\n${content}`,
           },
         ],
-        model: "llama-3.3-70b-versatile",
-        temperature: 0.5,
+        model: "llama-3.1-8b-instant",
+        temperature: 0.3,
         max_tokens: 1024,
+        top_p: 0.9,
       });
 
       const summary = chatCompletion.choices[0]?.message?.content || "";
