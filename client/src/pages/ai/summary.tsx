@@ -6,9 +6,10 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileSearch, Upload, ArrowLeft, CheckCircle, Sparkles, List, FileText, Copy } from "lucide-react";
+import { FileSearch, Upload, ArrowLeft, CheckCircle, Sparkles, List, FileText, Copy, AlertCircle } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 
 type UploadState = "idle" | "uploading" | "processing" | "complete" | "error";
 
@@ -77,46 +78,72 @@ export default function AISummary() {
     if (!file) return;
 
     setUploadState("uploading");
-    setProgress(0);
+    setProgress(20);
 
-    const uploadInterval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 40) {
-          clearInterval(uploadInterval);
-          return prev;
-        }
-        return prev + 10;
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      
+      setProgress(40);
+      
+      const uploadResponse = await fetch("/api/files/upload", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
       });
-    }, 200);
-
-    setTimeout(() => {
+      
+      if (!uploadResponse.ok) {
+        const uploadError = await uploadResponse.json();
+        throw new Error(uploadError.message || "Failed to upload file");
+      }
+      
+      const uploadData = await uploadResponse.json();
+      const fileId = uploadData.file?.id;
+      
+      setProgress(60);
       setUploadState("processing");
-      const processInterval = setInterval(() => {
-        setProgress((prev) => {
-          if (prev >= 100) {
-            clearInterval(processInterval);
-            setUploadState("complete");
-            // Simulated result
-            setResult({
-              summary:
-                "This document provides a comprehensive overview of the subject matter, covering key concepts and practical applications. The main focus is on delivering actionable insights while maintaining clarity and accessibility for readers of varying expertise levels. Throughout the document, several important themes emerge that are worth noting for future reference.",
-              keyPoints: [
-                "Introduction to core concepts and fundamental principles",
-                "Analysis of current trends and market dynamics",
-                "Detailed breakdown of implementation strategies",
-                "Case studies demonstrating real-world applications",
-                "Recommendations for best practices and optimization",
-                "Future outlook and emerging opportunities",
-              ],
-              wordCount: 2847,
-              readingTime: "12 min",
-            });
-            return 100;
-          }
-          return prev + 15;
-        });
-      }, 400);
-    }, 1000);
+      
+      const response = await apiRequest("POST", "/api/ai/summary", {
+        fileId: fileId,
+      });
+      
+      setProgress(90);
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.message || "Failed to generate summary");
+      }
+      
+      const summaryText = data.summary || "";
+      const keyPoints = extractKeyPoints(summaryText);
+      const wordCount = summaryText.split(/\s+/).filter((w: string) => w.length > 0).length * 10;
+      const readingTime = Math.max(1, Math.ceil(wordCount / 200));
+      
+      setProgress(100);
+      setUploadState("complete");
+      setResult({
+        summary: summaryText,
+        keyPoints: keyPoints,
+        wordCount: wordCount,
+        readingTime: `${readingTime} min`,
+      });
+    } catch (error: any) {
+      setUploadState("error");
+      toast({
+        title: "Error",
+        description: error.message || "Something went wrong",
+        variant: "destructive",
+      });
+    }
+  };
+  
+  const extractKeyPoints = (summary: string): string[] => {
+    const sentences = summary.split(/[.!?]+/).filter(s => s.trim().length > 20);
+    if (sentences.length <= 6) {
+      return sentences.map(s => s.trim()).filter(s => s.length > 0);
+    }
+    return sentences.slice(0, 6).map(s => s.trim());
   };
 
   const handleCopy = (text: string) => {
@@ -230,6 +257,25 @@ export default function AISummary() {
                     ? "Uploading your document..."
                     : "AI is reading and summarizing your document..."}
                 </p>
+              </div>
+            )}
+
+            {uploadState === "error" && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-4 p-4 bg-red-500/10 rounded-lg">
+                  <AlertCircle className="w-10 h-10 text-red-500" />
+                  <div className="flex-1">
+                    <p className="font-medium text-red-600 dark:text-red-400">
+                      Error occurred
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Could not generate summary. Please try again.
+                    </p>
+                  </div>
+                  <Button variant="outline" onClick={resetUpload} data-testid="button-try-again">
+                    Try Again
+                  </Button>
+                </div>
               </div>
             )}
 
