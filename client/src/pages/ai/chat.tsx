@@ -5,9 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { MessageCircle, Send, Upload, FileText, ArrowLeft, Bot, User, Sparkles } from "lucide-react";
+import { MessageCircle, Send, Upload, FileText, ArrowLeft, Bot, User, Sparkles, Loader2 } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 
 interface Message {
   id: string;
@@ -18,9 +19,11 @@ interface Message {
 
 export default function AIChat() {
   const [file, setFile] = useState<File | null>(null);
+  const [fileId, setFileId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -30,7 +33,37 @@ export default function AIChat() {
     }
   }, [messages]);
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const uploadFile = async (selectedFile: File): Promise<string | null> => {
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+      
+      const response = await fetch("/api/files/upload", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      
+      if (!response.ok) {
+        throw new Error("Failed to upload file");
+      }
+      
+      const data = await response.json();
+      return data.id || data.file?.id;
+    } catch (error) {
+      toast({
+        title: "Upload failed",
+        description: "Could not upload the file. Please try again.",
+        variant: "destructive",
+      });
+      return null;
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
       const validTypes = [
@@ -47,19 +80,27 @@ export default function AIChat() {
         });
         return;
       }
+      
       setFile(selectedFile);
-      setMessages([
-        {
-          id: "1",
-          role: "assistant",
-          content: `I've loaded "${selectedFile.name}". What would you like to know about this document?`,
-          timestamp: new Date(),
-        },
-      ]);
+      const uploadedFileId = await uploadFile(selectedFile);
+      
+      if (uploadedFileId) {
+        setFileId(uploadedFileId);
+        setMessages([
+          {
+            id: "1",
+            role: "assistant",
+            content: `I've loaded "${selectedFile.name}". What would you like to know about this document?`,
+            timestamp: new Date(),
+          },
+        ]);
+      } else {
+        setFile(null);
+      }
     }
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     const droppedFile = e.dataTransfer.files[0];
     if (droppedFile) {
@@ -77,20 +118,28 @@ export default function AIChat() {
         });
         return;
       }
+      
       setFile(droppedFile);
-      setMessages([
-        {
-          id: "1",
-          role: "assistant",
-          content: `I've loaded "${droppedFile.name}". What would you like to know about this document?`,
-          timestamp: new Date(),
-        },
-      ]);
+      const uploadedFileId = await uploadFile(droppedFile);
+      
+      if (uploadedFileId) {
+        setFileId(uploadedFileId);
+        setMessages([
+          {
+            id: "1",
+            role: "assistant",
+            content: `I've loaded "${droppedFile.name}". What would you like to know about this document?`,
+            timestamp: new Date(),
+          },
+        ]);
+      } else {
+        setFile(null);
+      }
     }
   };
 
   const handleSend = async () => {
-    if (!input.trim() || !file) return;
+    if (!input.trim() || !file || !fileId) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -100,28 +149,39 @@ export default function AIChat() {
     };
 
     setMessages((prev) => [...prev, userMessage]);
+    const messageContent = input.trim();
     setInput("");
     setIsLoading(true);
 
-    // Simulate AI response
-    setTimeout(() => {
-      const aiResponses = [
-        "Based on my analysis of the document, I can help answer that. The document appears to contain relevant information regarding your query.",
-        "Looking at the content of your document, I found several key points that address your question.",
-        "After reviewing the document, here's what I found that relates to your question.",
-        "The document provides detailed information on this topic. Let me summarize the main points for you.",
-      ];
+    try {
+      const response = await apiRequest("/api/ai/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          fileId,
+          message: messageContent,
+        }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: aiResponses[Math.floor(Math.random() * aiResponses.length)],
+        content: response.response || "I couldn't generate a response. Please try again.",
         timestamp: new Date(),
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to get AI response. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
       setIsLoading(false);
-    }, 1500);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -193,11 +253,15 @@ export default function AIChat() {
           <Card className="flex-1 flex flex-col min-h-0">
             <CardHeader className="shrink-0 pb-3">
               <div className="flex items-center gap-3">
-                <FileText className="w-5 h-5 text-muted-foreground" />
+                {isUploading ? (
+                  <Loader2 className="w-5 h-5 text-muted-foreground animate-spin" />
+                ) : (
+                  <FileText className="w-5 h-5 text-muted-foreground" />
+                )}
                 <div className="flex-1 min-w-0">
                   <p className="font-medium truncate" data-testid="text-filename">{file.name}</p>
                   <p className="text-xs text-muted-foreground">
-                    {(file.size / 1024 / 1024).toFixed(2)} MB
+                    {isUploading ? "Uploading..." : `${(file.size / 1024 / 1024).toFixed(2)} MB`}
                   </p>
                 </div>
                 <Button
@@ -205,6 +269,7 @@ export default function AIChat() {
                   size="sm"
                   onClick={() => {
                     setFile(null);
+                    setFileId(null);
                     setMessages([]);
                   }}
                   data-testid="button-change-file"
