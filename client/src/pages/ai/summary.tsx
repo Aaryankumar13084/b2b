@@ -324,11 +324,11 @@ export default function AISummary() {
                         </div>
                       </CardHeader>
                       <CardContent>
-                        <ScrollArea className="h-[200px]">
-                          <p className="text-sm leading-relaxed" data-testid="text-summary">
+                        <div className="max-h-[60vh] overflow-y-auto">
+                          <p className="text-sm leading-relaxed whitespace-pre-wrap" data-testid="text-summary">
                             {result.summary}
                           </p>
-                        </ScrollArea>
+                        </div>
                       </CardContent>
                     </Card>
                   </TabsContent>
