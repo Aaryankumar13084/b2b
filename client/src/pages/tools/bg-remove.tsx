@@ -884,9 +884,9 @@ export default function BgRemove() {
                       </div>
                     </div>
 
-                    <Button onClick={handleDownload} className="w-full gap-2" data-testid="button-download">
+                    <Button onClick={handleExport} className="w-full gap-2" data-testid="button-download">
                       <Download className="w-4 h-4" />
-                      Download {exportFormat.toUpperCase()}
+                      Download with Background
                     </Button>
 
                     <Button variant="outline" onClick={resetUpload} className="w-full" data-testid="button-new">
