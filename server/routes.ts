@@ -293,11 +293,21 @@ export async function registerRoutes(
         }
       }
 
+      const systemPrompt = documentContext 
+        ? `You are a helpful document assistant. The user has uploaded a document and wants to ask questions about it. 
+
+IMPORTANT: You MUST answer questions based ONLY on the document content provided below. Do not give generic answers. Focus on what is actually written in the document.
+
+${documentContext}
+
+When the user asks "what is in this document" or similar questions, provide a summary of the document's actual content. Never give generic explanations about file formats. Always respond in the same language as the user's question.`
+        : `You are a helpful document assistant. The document could not be read. Please inform the user that the document content is not available and ask them to try uploading again.`;
+
       const chatCompletion = await groq.chat.completions.create({
         messages: [
           {
             role: "system",
-            content: `You are a helpful document assistant. Answer questions clearly and accurately based on the document content. Never repeat words or phrases unnecessarily. ${documentContext}${context || ""}`,
+            content: systemPrompt + (context || ""),
           },
           { role: "user", content: message },
         ],
