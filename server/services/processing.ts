@@ -779,7 +779,7 @@ export async function convertPdfToWord(inputPath: string): Promise<ProcessingRes
       success: true,
       outputPath,
       outputName: `${baseName}.docx`,
-      metadata: { pageCount: pdfData.numpages, textLength: textContent.length },
+      metadata: { textLength: textContent.length },
     };
   } catch (error: any) {
     return { success: false, error: error.message };
