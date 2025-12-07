@@ -746,11 +746,12 @@ export async function compressPdf(
 
 export async function convertPdfToWord(inputPath: string): Promise<ProcessingResult> {
   try {
-    const pdfParse = await import("pdf-parse");
+    const pdfParseModule = await import("pdf-parse");
+    const pdfParse = pdfParseModule.default || pdfParseModule;
     const { Document, Packer, Paragraph, TextRun } = await import("docx");
     
     const pdfBuffer = fs.readFileSync(inputPath);
-    const pdfData = await pdfParse.default(pdfBuffer);
+    const pdfData = await pdfParse(pdfBuffer);
     
     const textContent = pdfData.text || "";
     const paragraphs = textContent.split("\n\n").filter((p: string) => p.trim());
