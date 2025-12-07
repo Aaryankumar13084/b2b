@@ -98,7 +98,7 @@ export default function AISummary() {
       }
       
       const uploadData = await uploadResponse.json();
-      const fileId = uploadData.file?.id;
+      const fileId = uploadData.id || uploadData.file?.id;
       
       setProgress(60);
       setUploadState("processing");
