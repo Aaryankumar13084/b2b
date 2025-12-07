@@ -218,7 +218,7 @@ export type AuditLog = typeof auditLogs.$inferSelect;
 
 // Credit limits per tier
 export const CREDIT_LIMITS = {
-  free: { daily: 10, monthly: 50 },
+  free: { daily: 25, monthly: 50 },
   pro: { daily: 100, monthly: 500 },
   enterprise: { daily: -1, monthly: -1 }, // -1 = unlimited
 } as const;
