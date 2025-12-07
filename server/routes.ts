@@ -330,6 +330,8 @@ export async function registerRoutes(
     try {
       const { fileId, text } = req.body;
       const userId = req.user.claims.sub;
+      
+      console.log("AI Summary request:", { fileId, hasText: !!text, userId });
 
       const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.ai_summary);
       if (!creditCheck.allowed) {
@@ -342,13 +344,16 @@ export async function registerRoutes(
       let content = text || "";
       if (fileId && !content) {
         const file = await storage.getFile(fileId);
+        console.log("File lookup result:", { fileId, found: !!file, storagePath: file?.storagePath, exists: file?.storagePath ? fs.existsSync(file.storagePath) : false });
         if (file && file.userId === userId && fs.existsSync(file.storagePath)) {
           const extractedText = await extractTextFromFile(file.storagePath, file.mimeType);
+          console.log("Extracted text length:", extractedText.length);
           content = extractedText.slice(0, 15000);
         }
       }
 
       if (!content) {
+        console.log("No content to summarize - content is empty");
         return res.status(400).json({ message: "No content to summarize" });
       }
 
