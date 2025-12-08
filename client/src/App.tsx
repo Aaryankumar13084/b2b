@@ -32,6 +32,10 @@ import BgRemove from "@/pages/tools/bg-remove";
 import CsvToExcel from "@/pages/tools/csv-to-excel";
 import ExcelClean from "@/pages/tools/excel-clean";
 import JsonFormat from "@/pages/tools/json-format";
+import PdfToImage from "@/pages/tools/pdf-to-image";
+import PdfWatermark from "@/pages/tools/pdf-watermark";
+import PdfRotate from "@/pages/tools/pdf-rotate";
+import ImageToPdf from "@/pages/tools/image-to-pdf";
 
 import AIChat from "@/pages/ai/chat";
 import AISummary from "@/pages/ai/summary";
@@ -60,6 +64,10 @@ function AuthenticatedRoutes() {
       <Route path="/tools/csv-to-excel" component={CsvToExcel} />
       <Route path="/tools/excel-clean" component={ExcelClean} />
       <Route path="/tools/json-format" component={JsonFormat} />
+      <Route path="/tools/pdf-to-image" component={PdfToImage} />
+      <Route path="/tools/pdf-watermark" component={PdfWatermark} />
+      <Route path="/tools/pdf-rotate" component={PdfRotate} />
+      <Route path="/tools/image-to-pdf" component={ImageToPdf} />
       <Route path="/ai" component={AIFeatures} />
       <Route path="/ai/chat" component={AIChat} />
       <Route path="/ai/summary" component={AISummary} />

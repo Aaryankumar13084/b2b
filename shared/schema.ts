@@ -20,9 +20,11 @@ export const subscriptionTierEnum = pgEnum('subscription_tier', ['free', 'pro', 
 export const fileStatusEnum = pgEnum('file_status', ['pending', 'processing', 'completed', 'failed', 'deleted']);
 export const toolTypeEnum = pgEnum('tool_type', [
   'pdf_to_word', 'word_to_pdf', 'pdf_merge', 'pdf_compress', 'pdf_split', 'pdf_lock', 'pdf_unlock',
+  'pdf_to_image', 'pdf_watermark', 'pdf_rotate', 'image_to_pdf',
   'image_compress', 'image_resize', 'image_convert', 'bg_remove',
   'csv_to_excel', 'excel_clean', 'json_format', 'text_to_csv',
-  'ai_chat', 'ai_summary', 'ai_invoice', 'ai_resume', 'ai_legal', 'ai_data_clean', 'voice_to_doc'
+  'ai_chat', 'ai_summary', 'ai_invoice', 'ai_resume', 'ai_legal', 'ai_data_clean', 'voice_to_doc',
+  'ai_translation', 'ai_grammar', 'ai_ocr'
 ]);
 export const userRoleEnum = pgEnum('user_role', ['user', 'admin']);
 
@@ -232,6 +234,9 @@ export const TOOL_CREDITS = {
   ai_legal: 3,
   ai_data_clean: 2,
   voice_to_doc: 2,
+  ai_translation: 2,
+  ai_grammar: 1,
+  ai_ocr: 2,
   // Non-AI tools are free
   pdf_to_word: 0,
   word_to_pdf: 0,
@@ -240,6 +245,10 @@ export const TOOL_CREDITS = {
   pdf_split: 0,
   pdf_lock: 0,
   pdf_unlock: 0,
+  pdf_to_image: 0,
+  pdf_watermark: 0,
+  pdf_rotate: 0,
+  image_to_pdf: 0,
   image_compress: 0,
   image_resize: 0,
   image_convert: 0,

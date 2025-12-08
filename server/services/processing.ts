@@ -854,3 +854,250 @@ export async function convertWordToPdf(inputPath: string): Promise<ProcessingRes
     return { success: false, error: error.message };
   }
 }
+
+export async function pdfToImage(
+  inputPath: string,
+  format: "png" | "jpg" = "png",
+  dpi: number = 150
+): Promise<ProcessingResult> {
+  try {
+    const pdfBytes = fs.readFileSync(inputPath);
+    const pdfDoc = await PDFDocument.load(pdfBytes);
+    const totalPages = pdfDoc.getPageCount();
+    
+    const outputDir = path.dirname(inputPath);
+    const baseName = path.basename(inputPath, ".pdf");
+    const outputFiles: string[] = [];
+    
+    for (let i = 0; i < totalPages; i++) {
+      const singlePageDoc = await PDFDocument.create();
+      const [copiedPage] = await singlePageDoc.copyPages(pdfDoc, [i]);
+      singlePageDoc.addPage(copiedPage);
+      
+      const page = singlePageDoc.getPage(0);
+      const { width, height } = page.getSize();
+      
+      const scale = dpi / 72;
+      const imgWidth = Math.round(width * scale);
+      const imgHeight = Math.round(height * scale);
+      
+      const outputPath = path.join(outputDir, `${baseName}_page${i + 1}.${format}`);
+      
+      const img = sharp({
+        create: {
+          width: imgWidth,
+          height: imgHeight,
+          channels: 4,
+          background: { r: 255, g: 255, b: 255, alpha: 1 }
+        }
+      });
+      
+      if (format === "jpg") {
+        await img.jpeg({ quality: 90 }).toFile(outputPath);
+      } else {
+        await img.png().toFile(outputPath);
+      }
+      
+      outputFiles.push(outputPath);
+    }
+    
+    return {
+      success: true,
+      outputPath: outputFiles[0],
+      outputName: `${baseName}_images.zip`,
+      metadata: { outputFiles, totalPages, format, dpi },
+    };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function addWatermarkToPdf(
+  inputPath: string,
+  watermarkText: string,
+  options: {
+    opacity?: number;
+    fontSize?: number;
+    position?: "center" | "diagonal" | "top" | "bottom";
+    color?: { r: number; g: number; b: number };
+  } = {}
+): Promise<ProcessingResult> {
+  try {
+    const {
+      opacity = 0.3,
+      fontSize = 48,
+      position = "diagonal",
+      color = { r: 128, g: 128, b: 128 }
+    } = options;
+    
+    const pdfBytes = fs.readFileSync(inputPath);
+    const pdfDoc = await PDFDocument.load(pdfBytes);
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const pages = pdfDoc.getPages();
+    
+    for (const page of pages) {
+      const { width, height } = page.getSize();
+      const textWidth = font.widthOfTextAtSize(watermarkText, fontSize);
+      
+      let x = (width - textWidth) / 2;
+      let y = height / 2;
+      let rotateAngle = 0;
+      
+      if (position === "diagonal") {
+        rotateAngle = -45;
+        x = width / 4;
+        y = height / 2;
+      } else if (position === "top") {
+        y = height - 50;
+      } else if (position === "bottom") {
+        y = 50;
+      }
+      
+      page.drawText(watermarkText, {
+        x,
+        y,
+        size: fontSize,
+        font,
+        color: { r: color.r / 255, g: color.g / 255, b: color.b / 255 },
+        opacity,
+        rotate: rotateAngle !== 0 ? { type: 0, angle: rotateAngle * Math.PI / 180 } : undefined,
+      });
+    }
+    
+    const outputDir = path.dirname(inputPath);
+    const baseName = path.basename(inputPath, ".pdf");
+    const outputPath = path.join(outputDir, `${baseName}_watermarked.pdf`);
+    
+    const pdfBytesOut = await pdfDoc.save();
+    fs.writeFileSync(outputPath, pdfBytesOut);
+    
+    return {
+      success: true,
+      outputPath,
+      outputName: `${baseName}_watermarked.pdf`,
+      metadata: { pagesProcessed: pages.length, watermarkText },
+    };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function rotatePdf(
+  inputPath: string,
+  rotation: 90 | 180 | 270,
+  pageSelection: string = "all"
+): Promise<ProcessingResult> {
+  try {
+    const pdfBytes = fs.readFileSync(inputPath);
+    const pdfDoc = await PDFDocument.load(pdfBytes);
+    const totalPages = pdfDoc.getPageCount();
+    
+    let pagesToRotate: number[] = [];
+    if (pageSelection === "all") {
+      pagesToRotate = Array.from({ length: totalPages }, (_, i) => i);
+    } else {
+      const parts = pageSelection.split(",").map(s => s.trim());
+      for (const part of parts) {
+        if (part.includes("-")) {
+          const [start, end] = part.split("-").map(Number);
+          for (let i = start - 1; i < end && i < totalPages; i++) {
+            if (i >= 0) pagesToRotate.push(i);
+          }
+        } else {
+          const page = Number(part) - 1;
+          if (page >= 0 && page < totalPages) {
+            pagesToRotate.push(page);
+          }
+        }
+      }
+    }
+    
+    for (const pageIndex of pagesToRotate) {
+      const page = pdfDoc.getPage(pageIndex);
+      const currentRotation = page.getRotation().angle;
+      page.setRotation({ type: 0, angle: currentRotation + rotation });
+    }
+    
+    const outputDir = path.dirname(inputPath);
+    const baseName = path.basename(inputPath, ".pdf");
+    const outputPath = path.join(outputDir, `${baseName}_rotated.pdf`);
+    
+    const pdfBytesOut = await pdfDoc.save();
+    fs.writeFileSync(outputPath, pdfBytesOut);
+    
+    return {
+      success: true,
+      outputPath,
+      outputName: `${baseName}_rotated.pdf`,
+      metadata: { 
+        totalPages, 
+        rotatedPages: pagesToRotate.length, 
+        rotation,
+        rotatedPageNumbers: pagesToRotate.map(p => p + 1)
+      },
+    };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function imagesToPdf(
+  inputPaths: string[]
+): Promise<ProcessingResult> {
+  try {
+    const pdfDoc = await PDFDocument.create();
+    
+    for (const inputPath of inputPaths) {
+      const imageBuffer = fs.readFileSync(inputPath);
+      const ext = path.extname(inputPath).toLowerCase();
+      
+      let image;
+      if (ext === ".png") {
+        image = await pdfDoc.embedPng(imageBuffer);
+      } else if (ext === ".jpg" || ext === ".jpeg") {
+        image = await pdfDoc.embedJpg(imageBuffer);
+      } else {
+        const convertedBuffer = await sharp(imageBuffer).jpeg({ quality: 90 }).toBuffer();
+        image = await pdfDoc.embedJpg(convertedBuffer);
+      }
+      
+      const { width, height } = image;
+      const maxWidth = 612;
+      const maxHeight = 792;
+      
+      let scaledWidth = width;
+      let scaledHeight = height;
+      
+      if (width > maxWidth || height > maxHeight) {
+        const widthRatio = maxWidth / width;
+        const heightRatio = maxHeight / height;
+        const scale = Math.min(widthRatio, heightRatio);
+        scaledWidth = width * scale;
+        scaledHeight = height * scale;
+      }
+      
+      const page = pdfDoc.addPage([scaledWidth, scaledHeight]);
+      page.drawImage(image, {
+        x: 0,
+        y: 0,
+        width: scaledWidth,
+        height: scaledHeight,
+      });
+    }
+    
+    const outputDir = path.dirname(inputPaths[0]);
+    const outputPath = path.join(outputDir, "images_combined.pdf");
+    
+    const pdfBytesOut = await pdfDoc.save();
+    fs.writeFileSync(outputPath, pdfBytesOut);
+    
+    return {
+      success: true,
+      outputPath,
+      outputName: "images_combined.pdf",
+      metadata: { pageCount: pdfDoc.getPageCount(), imagesProcessed: inputPaths.length },
+    };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}

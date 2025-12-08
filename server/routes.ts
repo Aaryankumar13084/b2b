@@ -1169,6 +1169,110 @@ Return ONLY valid JSON, no additional text.`,
     }
   });
 
+  // PDF to Image Tool
+  app.post("/api/tools/pdf-to-image", upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      const userId = req.user.claims.sub;
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.pdf_to_image || 0);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+      const format = req.body.format || "png";
+      const dpi = parseInt(req.body.dpi) || 150;
+      const result = await processing.pdfToImage(req.file.path, format, dpi);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error converting PDF to image:", error);
+      res.status(500).json({ message: error.message || "Failed to convert PDF to image" });
+    }
+  });
+
+  // PDF Watermark Tool
+  app.post("/api/tools/pdf-watermark", upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      const userId = req.user.claims.sub;
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.pdf_watermark || 0);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+      const { watermarkText, opacity, fontSize, position } = req.body;
+      if (!watermarkText) {
+        return res.status(400).json({ message: "Watermark text is required" });
+      }
+      const result = await processing.addWatermarkToPdf(req.file.path, watermarkText, {
+        opacity: parseFloat(opacity) || 0.3,
+        fontSize: parseInt(fontSize) || 48,
+        position: position || "diagonal",
+      });
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error adding watermark to PDF:", error);
+      res.status(500).json({ message: error.message || "Failed to add watermark" });
+    }
+  });
+
+  // PDF Rotate Tool
+  app.post("/api/tools/pdf-rotate", upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      const userId = req.user.claims.sub;
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.pdf_rotate || 0);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+      const rotation = parseInt(req.body.rotation) || 90;
+      const pageSelection = req.body.pageSelection || "all";
+      if (![90, 180, 270].includes(rotation)) {
+        return res.status(400).json({ message: "Rotation must be 90, 180, or 270 degrees" });
+      }
+      const result = await processing.rotatePdf(req.file.path, rotation as 90 | 180 | 270, pageSelection);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error rotating PDF:", error);
+      res.status(500).json({ message: error.message || "Failed to rotate PDF" });
+    }
+  });
+
+  // Image to PDF Tool
+  app.post("/api/tools/image-to-pdf", upload.array("files", 50), async (req: any, res) => {
+    try {
+      if (!req.files || req.files.length === 0) {
+        return res.status(400).json({ message: "No files uploaded" });
+      }
+      const userId = req.user.claims.sub;
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.image_to_pdf || 0);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+      const filePaths = req.files.map((f: any) => f.path);
+      const result = await processing.imagesToPdf(filePaths);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error converting images to PDF:", error);
+      res.status(500).json({ message: error.message || "Failed to convert images to PDF" });
+    }
+  });
+
   // Voice to Document (text-based for now - accepts transcribed text)
   app.post("/api/ai/voice-to-doc", async (req: any, res) => {
     try {

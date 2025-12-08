@@ -22,6 +22,10 @@ import {
   Braces,
   FileSpreadsheet,
   Layers,
+  FileImage,
+  Droplets,
+  RotateCw,
+  ImagePlus,
 } from "lucide-react";
 
 interface Tool {
@@ -90,6 +94,38 @@ const tools: Tool[] = [
     icon: Unlock,
     category: "document",
     href: "/tools/pdf-unlock",
+  },
+  {
+    id: "pdf-to-image",
+    title: "PDF to Image",
+    description: "Convert PDF pages to PNG or JPG images",
+    icon: FileImage,
+    category: "document",
+    href: "/tools/pdf-to-image",
+  },
+  {
+    id: "pdf-watermark",
+    title: "PDF Watermark",
+    description: "Add text watermark to your PDF documents",
+    icon: Droplets,
+    category: "document",
+    href: "/tools/pdf-watermark",
+  },
+  {
+    id: "pdf-rotate",
+    title: "PDF Rotate",
+    description: "Rotate PDF pages by 90, 180, or 270 degrees",
+    icon: RotateCw,
+    category: "document",
+    href: "/tools/pdf-rotate",
+  },
+  {
+    id: "image-to-pdf",
+    title: "Image to PDF",
+    description: "Convert multiple images into a single PDF",
+    icon: ImagePlus,
+    category: "document",
+    href: "/tools/image-to-pdf",
   },
   {
     id: "image-compress",
