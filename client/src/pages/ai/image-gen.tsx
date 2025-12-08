@@ -119,31 +119,20 @@ export default function AIImageGen() {
     });
   };
 
-  const handleDownload = async () => {
+  const handleDownload = () => {
     if (!generatedUrl) return;
     
-    try {
-      const response = await fetch(generatedUrl);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `ai-generated-${Date.now()}.png`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-      toast({
-        title: "Downloaded",
-        description: "Image saved successfully",
-      });
-    } catch {
-      toast({
-        title: "Download failed",
-        description: "Could not download the image",
-        variant: "destructive",
-      });
-    }
+    const a = document.createElement("a");
+    a.href = generatedUrl;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    toast({
+      title: "Opening Image",
+      description: "Right-click on the image and select 'Save Image As' to download",
+    });
   };
 
   const resetGenerator = () => {
