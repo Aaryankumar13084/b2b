@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,25 +6,17 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Image, ArrowLeft, CheckCircle, Sparkles, Download, AlertCircle, Wand2 } from "lucide-react";
+import { ArrowLeft, CheckCircle, Sparkles, Download, AlertCircle, Wand2 } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { usePollinationsImage } from "@pollinations/react";
 
 type GenerateState = "idle" | "generating" | "complete" | "error";
 
-interface GeneratedImage {
-  downloadUrl: string;
-  filename: string;
-  prompt: string;
-  size: string;
-  style: string;
-}
-
 const SIZES = [
-  { value: "1024x1024", label: "Square (1024x1024)" },
-  { value: "1792x1024", label: "Landscape (1792x1024)" },
-  { value: "1024x1792", label: "Portrait (1024x1792)" },
+  { value: "1024x1024", label: "Square (1024x1024)", width: 1024, height: 1024 },
+  { value: "1792x1024", label: "Landscape (1792x1024)", width: 1792, height: 1024 },
+  { value: "1024x1792", label: "Portrait (1024x1792)", width: 1024, height: 1792 },
 ];
 
 const STYLES = [
@@ -32,67 +24,111 @@ const STYLES = [
   { value: "natural", label: "Natural - More natural, less hyper-real" },
 ];
 
+function ImageGenerator({ 
+  prompt, 
+  width, 
+  height, 
+  style,
+  onComplete, 
+  onError 
+}: { 
+  prompt: string; 
+  width: number; 
+  height: number;
+  style: string;
+  onComplete: (url: string) => void; 
+  onError: () => void;
+}) {
+  const fullPrompt = style === "vivid" 
+    ? `${prompt}, hyper-realistic, dramatic lighting, vivid colors, high detail`
+    : `${prompt}, natural lighting, realistic, soft colors`;
+    
+  const imageUrl = usePollinationsImage(fullPrompt, {
+    width,
+    height,
+    seed: Math.floor(Math.random() * 1000000),
+    model: 'flux',
+    nologo: true
+  });
+
+  useEffect(() => {
+    if (imageUrl) {
+      onComplete(imageUrl);
+    }
+  }, [imageUrl, onComplete]);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (!imageUrl) {
+        onError();
+      }
+    }, 60000);
+    return () => clearTimeout(timeout);
+  }, [imageUrl, onError]);
+
+  return null;
+}
+
 export default function AIImageGen() {
   const [prompt, setPrompt] = useState("");
   const [size, setSize] = useState("1024x1024");
   const [style, setStyle] = useState("vivid");
   const [generateState, setGenerateState] = useState<GenerateState>("idle");
   const [progress, setProgress] = useState(0);
-  const [result, setResult] = useState<GeneratedImage | null>(null);
+  const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
+  const [activePrompt, setActivePrompt] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
   const { toast } = useToast();
 
-  const handleGenerate = async () => {
-    if (!prompt.trim()) return;
+  const selectedSize = SIZES.find(s => s.value === size) || SIZES[0];
 
-    setGenerateState("generating");
-    setProgress(20);
-
-    try {
-      setProgress(40);
-      
-      const response = await apiRequest("POST", "/api/ai/image-gen", {
-        prompt: prompt.trim(),
-        size,
-        style,
-      });
-      
-      setProgress(80);
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.message || "Failed to generate image");
-      }
-      
-      setProgress(100);
-      setGenerateState("complete");
-      setResult({
-        downloadUrl: data.downloadUrl,
-        filename: data.filename,
-        prompt: prompt.trim(),
-        size,
-        style,
-      });
-    } catch (error: any) {
-      setGenerateState("error");
-      toast({
-        title: "Error",
-        description: error.message || "Something went wrong",
-        variant: "destructive",
-      });
+  useEffect(() => {
+    if (generateState === "generating") {
+      const interval = setInterval(() => {
+        setProgress(prev => {
+          if (prev >= 90) return prev;
+          return prev + 5;
+        });
+      }, 500);
+      return () => clearInterval(interval);
     }
+  }, [generateState]);
+
+  const handleGenerate = () => {
+    if (!prompt.trim()) return;
+    setActivePrompt(prompt.trim());
+    setGenerateState("generating");
+    setProgress(10);
+    setIsGenerating(true);
+  };
+
+  const handleComplete = (url: string) => {
+    setProgress(100);
+    setGenerateState("complete");
+    setGeneratedUrl(url);
+    setIsGenerating(false);
+  };
+
+  const handleError = () => {
+    setGenerateState("error");
+    setIsGenerating(false);
+    toast({
+      title: "Error",
+      description: "Failed to generate image. Please try again.",
+      variant: "destructive",
+    });
   };
 
   const handleDownload = async () => {
-    if (!result?.downloadUrl) return;
+    if (!generatedUrl) return;
     
     try {
-      const response = await fetch(result.downloadUrl);
+      const response = await fetch(generatedUrl);
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = result.filename || `ai-generated-${Date.now()}.png`;
+      a.download = `ai-generated-${Date.now()}.png`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -114,7 +150,9 @@ export default function AIImageGen() {
     setPrompt("");
     setGenerateState("idle");
     setProgress(0);
-    setResult(null);
+    setGeneratedUrl(null);
+    setActivePrompt("");
+    setIsGenerating(false);
   };
 
   return (
@@ -137,7 +175,7 @@ export default function AIImageGen() {
             </div>
             <Badge variant="secondary" className="ml-auto">
               <Sparkles className="w-3 h-3 mr-1" />
-              5 Credits/image
+              Free with Pollinations
             </Badge>
           </div>
         </div>
@@ -146,11 +184,22 @@ export default function AIImageGen() {
           <CardHeader>
             <CardTitle>Create an Image</CardTitle>
             <CardDescription>
-              Describe what you want to see and AI will generate it for you
+              Describe what you want to see and AI will generate it for you using Pollinations AI
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {generateState === "idle" && !result && (
+            {isGenerating && (
+              <ImageGenerator
+                prompt={activePrompt}
+                width={selectedSize.width}
+                height={selectedSize.height}
+                style={style}
+                onComplete={handleComplete}
+                onError={handleError}
+              />
+            )}
+
+            {generateState === "idle" && !generatedUrl && (
               <>
                 <Textarea
                   placeholder="Describe the image you want to generate... Be specific about style, colors, composition, and mood."
@@ -214,7 +263,7 @@ export default function AIImageGen() {
                   <div className="flex-1">
                     <p className="font-medium">Creating your masterpiece...</p>
                     <p className="text-sm text-muted-foreground">
-                      AI is generating your image
+                      AI is generating your image with Pollinations
                     </p>
                   </div>
                 </div>
@@ -244,7 +293,7 @@ export default function AIImageGen() {
               </div>
             )}
 
-            {generateState === "complete" && result && (
+            {generateState === "complete" && generatedUrl && (
               <div className="space-y-4">
                 <div className="flex items-center gap-4 p-4 bg-green-500/10 rounded-lg">
                   <CheckCircle className="w-10 h-10 text-green-500" />
@@ -263,8 +312,8 @@ export default function AIImageGen() {
 
                 <div className="relative rounded-lg overflow-hidden border">
                   <img
-                    src={result.downloadUrl}
-                    alt={result.prompt}
+                    src={generatedUrl}
+                    alt={activePrompt}
                     className="w-full h-auto"
                     data-testid="img-generated"
                   />
@@ -281,7 +330,7 @@ export default function AIImageGen() {
                   <CardContent className="p-4">
                     <p className="text-sm font-medium mb-1">Prompt Used:</p>
                     <p className="text-sm text-muted-foreground" data-testid="text-prompt-used">
-                      {result.prompt}
+                      {activePrompt}
                     </p>
                   </CardContent>
                 </Card>
