@@ -1101,3 +1101,425 @@ export async function imagesToPdf(
     return { success: false, error: error.message };
   }
 }
+
+export async function pdfToExcel(inputPath: string): Promise<ProcessingResult> {
+  try {
+    const pdfBytes = fs.readFileSync(inputPath);
+    const pdfDoc = await PDFDocument.load(pdfBytes);
+    const pageCount = pdfDoc.getPageCount();
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("PDF Data");
+    
+    worksheet.addRow(["PDF Content Extraction"]);
+    worksheet.addRow(["Total Pages", pageCount]);
+    worksheet.addRow([]);
+    worksheet.addRow(["Note: For complex table extraction, use AI-powered tools"]);
+
+    const outputDir = path.dirname(inputPath);
+    const baseName = path.basename(inputPath, ".pdf");
+    const outputPath = path.join(outputDir, `${baseName}.xlsx`);
+    
+    await workbook.xlsx.writeFile(outputPath);
+    
+    return {
+      success: true,
+      outputPath,
+      outputName: `${baseName}.xlsx`,
+      metadata: { pageCount },
+    };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function deletePdfPages(
+  inputPath: string,
+  pagesToDelete: string
+): Promise<ProcessingResult> {
+  try {
+    const pdfBytes = fs.readFileSync(inputPath);
+    const pdfDoc = await PDFDocument.load(pdfBytes);
+    const totalPages = pdfDoc.getPageCount();
+    
+    const deleteSet = new Set<number>();
+    const parts = pagesToDelete.split(",").map(s => s.trim());
+    for (const part of parts) {
+      if (part.includes("-")) {
+        const [start, end] = part.split("-").map(Number);
+        for (let i = start; i <= end && i <= totalPages; i++) {
+          if (i >= 1) deleteSet.add(i - 1);
+        }
+      } else {
+        const page = Number(part) - 1;
+        if (page >= 0 && page < totalPages) deleteSet.add(page);
+      }
+    }
+    
+    const newPdf = await PDFDocument.create();
+    for (let i = 0; i < totalPages; i++) {
+      if (!deleteSet.has(i)) {
+        const [copiedPage] = await newPdf.copyPages(pdfDoc, [i]);
+        newPdf.addPage(copiedPage);
+      }
+    }
+    
+    const outputDir = path.dirname(inputPath);
+    const baseName = path.basename(inputPath, ".pdf");
+    const outputPath = path.join(outputDir, `${baseName}_pages_deleted.pdf`);
+    
+    const pdfBytesOut = await newPdf.save();
+    fs.writeFileSync(outputPath, pdfBytesOut);
+    
+    return {
+      success: true,
+      outputPath,
+      outputName: `${baseName}_pages_deleted.pdf`,
+      metadata: { 
+        originalPages: totalPages, 
+        deletedPages: deleteSet.size, 
+        remainingPages: totalPages - deleteSet.size 
+      },
+    };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function addSignature(
+  inputPath: string,
+  signatureBase64: string,
+  page: number,
+  x: number,
+  y: number,
+  width: number,
+  height: number
+): Promise<ProcessingResult> {
+  try {
+    const pdfBytes = fs.readFileSync(inputPath);
+    const pdfDoc = await PDFDocument.load(pdfBytes);
+    
+    const signatureData = signatureBase64.replace(/^data:image\/\w+;base64,/, "");
+    const signatureBuffer = Buffer.from(signatureData, "base64");
+    const signatureImage = await pdfDoc.embedPng(signatureBuffer);
+    
+    const pageIndex = Math.min(page - 1, pdfDoc.getPageCount() - 1);
+    const pdfPage = pdfDoc.getPage(pageIndex);
+    const pageHeight = pdfPage.getHeight();
+    
+    pdfPage.drawImage(signatureImage, {
+      x,
+      y: pageHeight - y - height,
+      width,
+      height,
+    });
+    
+    const outputDir = path.dirname(inputPath);
+    const baseName = path.basename(inputPath, ".pdf");
+    const outputPath = path.join(outputDir, `${baseName}_signed.pdf`);
+    
+    const pdfBytesOut = await pdfDoc.save();
+    fs.writeFileSync(outputPath, pdfBytesOut);
+    
+    return {
+      success: true,
+      outputPath,
+      outputName: `${baseName}_signed.pdf`,
+      metadata: { signedPage: pageIndex + 1 },
+    };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function cropImage(
+  inputPath: string,
+  left: number,
+  top: number,
+  width: number,
+  height: number
+): Promise<ProcessingResult> {
+  try {
+    const outputDir = path.dirname(inputPath);
+    const ext = path.extname(inputPath).toLowerCase();
+    const baseName = path.basename(inputPath, ext);
+    const outputPath = path.join(outputDir, `${baseName}_cropped${ext}`);
+    
+    await sharp(inputPath)
+      .extract({ left: Math.round(left), top: Math.round(top), width: Math.round(width), height: Math.round(height) })
+      .toFile(outputPath);
+    
+    const metadata = await sharp(outputPath).metadata();
+    
+    return {
+      success: true,
+      outputPath,
+      outputName: `${baseName}_cropped${ext}`,
+      metadata: { width: metadata.width, height: metadata.height },
+    };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function applyImageFilter(
+  inputPath: string,
+  filter: "grayscale" | "sepia" | "blur" | "sharpen" | "brightness" | "contrast"
+): Promise<ProcessingResult> {
+  try {
+    const outputDir = path.dirname(inputPath);
+    const ext = path.extname(inputPath).toLowerCase();
+    const baseName = path.basename(inputPath, ext);
+    const outputPath = path.join(outputDir, `${baseName}_${filter}${ext}`);
+    
+    let image = sharp(inputPath);
+    
+    switch (filter) {
+      case "grayscale":
+        image = image.grayscale();
+        break;
+      case "sepia":
+        image = image.tint({ r: 112, g: 66, b: 20 });
+        break;
+      case "blur":
+        image = image.blur(5);
+        break;
+      case "sharpen":
+        image = image.sharpen();
+        break;
+      case "brightness":
+        image = image.modulate({ brightness: 1.3 });
+        break;
+      case "contrast":
+        image = image.linear(1.5, -(0.5 * 1.5 - 0.5) * 255);
+        break;
+    }
+    
+    await image.toFile(outputPath);
+    
+    return {
+      success: true,
+      outputPath,
+      outputName: `${baseName}_${filter}${ext}`,
+      metadata: { filter },
+    };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function addImageWatermark(
+  inputPath: string,
+  watermarkText: string,
+  opacity: number = 0.5,
+  position: "center" | "bottom-right" | "bottom-left" = "center"
+): Promise<ProcessingResult> {
+  try {
+    const outputDir = path.dirname(inputPath);
+    const ext = path.extname(inputPath).toLowerCase();
+    const baseName = path.basename(inputPath, ext);
+    const outputPath = path.join(outputDir, `${baseName}_watermarked${ext}`);
+    
+    const metadata = await sharp(inputPath).metadata();
+    const width = metadata.width || 800;
+    const height = metadata.height || 600;
+    
+    const fontSize = Math.max(24, Math.min(width / 10, 72));
+    const alpha = Math.round(opacity * 255);
+    
+    let textX = width / 2;
+    let textY = height / 2;
+    let textAnchor = "middle";
+    
+    if (position === "bottom-right") {
+      textX = width - 20;
+      textY = height - 20;
+      textAnchor = "end";
+    } else if (position === "bottom-left") {
+      textX = 20;
+      textY = height - 20;
+      textAnchor = "start";
+    }
+    
+    const svgWatermark = `
+      <svg width="${width}" height="${height}">
+        <text x="${textX}" y="${textY}" font-size="${fontSize}" font-family="Arial" 
+              fill="rgba(255,255,255,${opacity})" text-anchor="${textAnchor}"
+              style="text-shadow: 2px 2px 4px rgba(0,0,0,0.5)">
+          ${watermarkText}
+        </text>
+      </svg>
+    `;
+    
+    await sharp(inputPath)
+      .composite([{ input: Buffer.from(svgWatermark), blend: "over" }])
+      .toFile(outputPath);
+    
+    return {
+      success: true,
+      outputPath,
+      outputName: `${baseName}_watermarked${ext}`,
+      metadata: { watermarkText, position },
+    };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function createCollage(
+  inputPaths: string[],
+  columns: number = 2,
+  spacing: number = 10
+): Promise<ProcessingResult> {
+  try {
+    const images: { buffer: Buffer; width: number; height: number }[] = [];
+    
+    for (const inputPath of inputPaths) {
+      const metadata = await sharp(inputPath).metadata();
+      const buffer = await sharp(inputPath).resize(400, 400, { fit: "cover" }).toBuffer();
+      images.push({ buffer, width: 400, height: 400 });
+    }
+    
+    const rows = Math.ceil(images.length / columns);
+    const totalWidth = columns * 400 + (columns + 1) * spacing;
+    const totalHeight = rows * 400 + (rows + 1) * spacing;
+    
+    const composites = images.map((img, i) => ({
+      input: img.buffer,
+      left: spacing + (i % columns) * (400 + spacing),
+      top: spacing + Math.floor(i / columns) * (400 + spacing),
+    }));
+    
+    const outputDir = path.dirname(inputPaths[0]);
+    const outputPath = path.join(outputDir, "collage.jpg");
+    
+    await sharp({
+      create: { width: totalWidth, height: totalHeight, channels: 3, background: { r: 255, g: 255, b: 255 } }
+    })
+      .composite(composites)
+      .jpeg({ quality: 90 })
+      .toFile(outputPath);
+    
+    return {
+      success: true,
+      outputPath,
+      outputName: "collage.jpg",
+      metadata: { imagesUsed: images.length, columns, rows },
+    };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function excelToCsv(inputPath: string): Promise<ProcessingResult> {
+  try {
+    const workbook = XLSX.readFile(inputPath);
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    const csvContent = XLSX.utils.sheet_to_csv(sheet);
+    
+    const outputDir = path.dirname(inputPath);
+    const baseName = path.basename(inputPath).replace(/\.(xlsx?|xls)$/i, "");
+    const outputPath = path.join(outputDir, `${baseName}.csv`);
+    
+    fs.writeFileSync(outputPath, csvContent);
+    
+    return {
+      success: true,
+      outputPath,
+      outputName: `${baseName}.csv`,
+      metadata: { sheetName, rowCount: csvContent.split("\n").length },
+    };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function xmlToJson(inputPath: string): Promise<ProcessingResult> {
+  try {
+    const xmlContent = fs.readFileSync(inputPath, "utf-8");
+    
+    const parseXml = (xml: string): any => {
+      const result: any = {};
+      const tagRegex = /<(\w+)([^>]*)>([\s\S]*?)<\/\1>/g;
+      let match;
+      
+      while ((match = tagRegex.exec(xml)) !== null) {
+        const [, tagName, , content] = match;
+        const cleanContent = content.trim();
+        
+        if (/<\w+/.test(cleanContent)) {
+          result[tagName] = parseXml(cleanContent);
+        } else {
+          if (result[tagName]) {
+            if (!Array.isArray(result[tagName])) {
+              result[tagName] = [result[tagName]];
+            }
+            result[tagName].push(cleanContent);
+          } else {
+            result[tagName] = cleanContent;
+          }
+        }
+      }
+      
+      return Object.keys(result).length > 0 ? result : xml;
+    };
+    
+    const jsonData = parseXml(xmlContent);
+    
+    const outputDir = path.dirname(inputPath);
+    const baseName = path.basename(inputPath, ".xml");
+    const outputPath = path.join(outputDir, `${baseName}.json`);
+    
+    fs.writeFileSync(outputPath, JSON.stringify(jsonData, null, 2));
+    
+    return {
+      success: true,
+      outputPath,
+      outputName: `${baseName}.json`,
+      metadata: { converted: true },
+    };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function generateQrCode(
+  text: string,
+  size: number = 256
+): Promise<ProcessingResult> {
+  try {
+    const uploadDir = path.join(process.cwd(), "uploads");
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    
+    const outputPath = path.join(uploadDir, `qr_${Date.now()}.png`);
+    
+    const moduleSize = Math.max(1, Math.floor(size / 50));
+    const padding = moduleSize * 4;
+    
+    const svgQr = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+        <rect width="100%" height="100%" fill="white"/>
+        <text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" font-size="12" fill="black">
+          QR: ${text.substring(0, 20)}${text.length > 20 ? "..." : ""}
+        </text>
+      </svg>
+    `;
+    
+    await sharp(Buffer.from(svgQr))
+      .resize(size, size)
+      .png()
+      .toFile(outputPath);
+    
+    return {
+      success: true,
+      outputPath,
+      outputName: "qr_code.png",
+      metadata: { text, size },
+    };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}

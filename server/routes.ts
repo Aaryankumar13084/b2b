@@ -1355,6 +1355,534 @@ Return ONLY valid JSON.`,
     }
   });
 
+  // AI Writing Assistant
+  app.post("/api/ai/writing", async (req: any, res) => {
+    try {
+      const { type, topic, tone, length, additionalInstructions } = req.body;
+      const userId = req.user.claims.sub;
+
+      if (!type || !topic) {
+        return res.status(400).json({ message: "Content type and topic are required" });
+      }
+
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.ai_writing);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+
+      const startTime = Date.now();
+      const groq = getGroqClient();
+
+      const typePrompts: Record<string, string> = {
+        blog: "Write a blog post",
+        email: "Write a professional email",
+        article: "Write an article",
+        social: "Write a social media post",
+        marketing: "Write marketing copy",
+        product: "Write a product description",
+      };
+
+      const lengthGuide: Record<string, string> = {
+        short: "Keep it concise, around 100-200 words",
+        medium: "Write a moderate length, around 300-500 words",
+        long: "Write a comprehensive piece, around 600-1000 words",
+      };
+
+      const prompt = `${typePrompts[type] || "Write content"} about the following topic: "${topic}"
+
+Tone: ${tone || "professional"}
+${lengthGuide[length || "medium"]}
+${additionalInstructions ? `Additional instructions: ${additionalInstructions}` : ""}
+
+Please write high-quality, engaging content that is well-structured and ready to use.`;
+
+      const chatCompletion = await groq.chat.completions.create({
+        messages: [
+          {
+            role: "system",
+            content: `You are a professional content writer who creates engaging, well-structured content. 
+Write in a clear, compelling style that matches the requested tone.
+For emails, include proper greeting and sign-off placeholders.
+For blog posts, include a catchy introduction and conclusion.
+For social media, keep it punchy and include relevant hashtag suggestions.
+Format the content appropriately with paragraphs and structure.`,
+          },
+          {
+            role: "user",
+            content: prompt,
+          },
+        ],
+        model: "llama-3.3-70b-versatile",
+        temperature: 0.7,
+        max_tokens: 2048,
+      });
+
+      const content = chatCompletion.choices[0]?.message?.content || "";
+      const processingTime = Date.now() - startTime;
+
+      await storage.logAiUsage({
+        userId,
+        toolType: "ai_writing",
+        creditsUsed: TOOL_CREDITS.ai_writing,
+        inputTokens: chatCompletion.usage?.prompt_tokens,
+        outputTokens: chatCompletion.usage?.completion_tokens,
+        processingTimeMs: processingTime,
+        success: true,
+      });
+
+      const wordCount = content.split(/\s+/).filter((w: string) => w.length > 0).length;
+
+      res.json({ 
+        content, 
+        wordCount,
+        type,
+        tokens: chatCompletion.usage 
+      });
+    } catch (error: any) {
+      console.error("Error in AI writing:", error);
+      res.status(500).json({ message: error.message || "Failed to generate content" });
+    }
+  });
+
+  // AI Email Extractor
+  app.post("/api/ai/email-extractor", upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      const userId = req.user.claims.sub;
+
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.ai_email_extractor);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+
+      const startTime = Date.now();
+      const groq = getGroqClient();
+
+      let content = "";
+      try {
+        const extractedText = await extractTextFromFile(req.file.path, req.file.mimetype);
+        content = extractedText.slice(0, 30000);
+      } catch (err: any) {
+        console.error("Email extractor extraction error:", err.message);
+      }
+
+      if (!content.trim()) {
+        if (fs.existsSync(req.file.path)) {
+          fs.unlinkSync(req.file.path);
+        }
+        return res.status(400).json({ 
+          message: "Could not extract text from file. Please ensure it's a valid document." 
+        });
+      }
+
+      const chatCompletion = await groq.chat.completions.create({
+        messages: [
+          {
+            role: "system",
+            content: `You are an email extraction expert. Analyze the provided text and extract all email addresses.
+Return a JSON response with:
+{
+  "emails": [{"email": string, "context": string (where it was found, e.g. "contact section", "footer")}],
+  "totalFound": number,
+  "uniqueCount": number,
+  "domains": [{"domain": string, "count": number}]
+}
+Return ONLY valid JSON, no additional text.`,
+          },
+          {
+            role: "user",
+            content: `Extract all email addresses from this document:\n\n${content}`,
+          },
+        ],
+        model: "llama-3.1-8b-instant",
+        temperature: 0.1,
+        max_tokens: 1024,
+      });
+
+      const responseText = chatCompletion.choices[0]?.message?.content || "";
+      const processingTime = Date.now() - startTime;
+
+      await storage.logAiUsage({
+        userId,
+        toolType: "ai_email_extractor",
+        creditsUsed: TOOL_CREDITS.ai_email_extractor,
+        inputTokens: chatCompletion.usage?.prompt_tokens,
+        outputTokens: chatCompletion.usage?.completion_tokens,
+        processingTimeMs: processingTime,
+        success: true,
+      });
+
+      let result;
+      try {
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          result = JSON.parse(jsonMatch[0]);
+        } else {
+          throw new Error("No JSON found in response");
+        }
+      } catch {
+        result = {
+          emails: [],
+          totalFound: 0,
+          uniqueCount: 0,
+          domains: [],
+        };
+      }
+
+      if (fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
+
+      res.json({ result, tokens: chatCompletion.usage });
+    } catch (error: any) {
+      console.error("Error in AI email extraction:", error);
+      res.status(500).json({ message: error.message || "Failed to extract emails" });
+    }
+  });
+
+  // AI OCR - Extract text from images
+  app.post("/api/ai/ocr", upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      const userId = req.user.claims.sub;
+
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.ai_ocr);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+
+      const startTime = Date.now();
+      const groq = getGroqClient();
+
+      // Convert image to base64
+      const imageBuffer = fs.readFileSync(req.file.path);
+      const base64Image = imageBuffer.toString("base64");
+      const mimeType = req.file.mimetype || "image/png";
+
+      const chatCompletion = await groq.chat.completions.create({
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `You are an OCR expert. Extract ALL text from this image, including handwritten text if present. 
+Maintain the original layout and structure as much as possible.
+If there are tables, format them appropriately.
+If there are multiple columns, read left to right.
+Return ONLY the extracted text, no explanations or comments.`,
+              },
+              {
+                type: "image_url",
+                image_url: {
+                  url: `data:${mimeType};base64,${base64Image}`,
+                },
+              },
+            ],
+          },
+        ],
+        model: "llama-3.2-90b-vision-preview",
+        temperature: 0.1,
+        max_tokens: 4096,
+      });
+
+      const extractedText = chatCompletion.choices[0]?.message?.content || "";
+      const processingTime = Date.now() - startTime;
+
+      await storage.logAiUsage({
+        userId,
+        toolType: "ai_ocr",
+        creditsUsed: TOOL_CREDITS.ai_ocr,
+        inputTokens: chatCompletion.usage?.prompt_tokens,
+        outputTokens: chatCompletion.usage?.completion_tokens,
+        processingTimeMs: processingTime,
+        success: true,
+      });
+
+      if (fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
+
+      const wordCount = extractedText.split(/\s+/).filter((w: string) => w.length > 0).length;
+      const charCount = extractedText.length;
+
+      res.json({ 
+        text: extractedText, 
+        wordCount,
+        charCount,
+        tokens: chatCompletion.usage 
+      });
+    } catch (error: any) {
+      console.error("Error in AI OCR:", error);
+      res.status(500).json({ message: error.message || "Failed to extract text from image" });
+    }
+  });
+
+  // PDF to Excel Tool
+  app.post("/api/tools/pdf-to-excel", upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      const userId = req.user.claims.sub;
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.pdf_to_excel || 0);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+      const result = await processing.pdfToExcel(req.file.path);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error converting PDF to Excel:", error);
+      res.status(500).json({ message: error.message || "Failed to convert PDF to Excel" });
+    }
+  });
+
+  // PDF Page Delete Tool
+  app.post("/api/tools/pdf-page-delete", upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      const userId = req.user.claims.sub;
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.pdf_page_delete || 0);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+      const { pages } = req.body;
+      if (!pages) {
+        return res.status(400).json({ message: "Please specify pages to delete" });
+      }
+      const result = await processing.deletePdfPages(req.file.path, pages);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error deleting PDF pages:", error);
+      res.status(500).json({ message: error.message || "Failed to delete PDF pages" });
+    }
+  });
+
+  // E-Sign Tool
+  app.post("/api/tools/esign", upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      const userId = req.user.claims.sub;
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.esign || 0);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+      const { signature, page, x, y, width, height } = req.body;
+      if (!signature) {
+        return res.status(400).json({ message: "Signature is required" });
+      }
+      const result = await processing.addSignature(
+        req.file.path, 
+        signature, 
+        parseInt(page) || 1,
+        parseFloat(x) || 50,
+        parseFloat(y) || 50,
+        parseFloat(width) || 200,
+        parseFloat(height) || 100
+      );
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error adding signature:", error);
+      res.status(500).json({ message: error.message || "Failed to add signature" });
+    }
+  });
+
+  // Image Crop Tool
+  app.post("/api/tools/image-crop", upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      const userId = req.user.claims.sub;
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.image_crop || 0);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+      const { left, top, width, height } = req.body;
+      const result = await processing.cropImage(
+        req.file.path,
+        parseFloat(left) || 0,
+        parseFloat(top) || 0,
+        parseFloat(width) || 100,
+        parseFloat(height) || 100
+      );
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error cropping image:", error);
+      res.status(500).json({ message: error.message || "Failed to crop image" });
+    }
+  });
+
+  // Image Filter Tool
+  app.post("/api/tools/image-filter", upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      const userId = req.user.claims.sub;
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.image_filter || 0);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+      const { filter } = req.body;
+      const validFilters = ["grayscale", "sepia", "blur", "sharpen", "brightness", "contrast"];
+      if (!filter || !validFilters.includes(filter)) {
+        return res.status(400).json({ message: "Invalid filter" });
+      }
+      const result = await processing.applyImageFilter(req.file.path, filter);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error applying filter:", error);
+      res.status(500).json({ message: error.message || "Failed to apply filter" });
+    }
+  });
+
+  // Image Watermark Tool
+  app.post("/api/tools/image-watermark", upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      const userId = req.user.claims.sub;
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.image_watermark || 0);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+      const { text, opacity, position } = req.body;
+      if (!text) {
+        return res.status(400).json({ message: "Watermark text is required" });
+      }
+      const result = await processing.addImageWatermark(
+        req.file.path,
+        text,
+        parseFloat(opacity) || 0.5,
+        position || "center"
+      );
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error adding watermark:", error);
+      res.status(500).json({ message: error.message || "Failed to add watermark" });
+    }
+  });
+
+  // Collage Maker Tool
+  app.post("/api/tools/collage", upload.array("files", 20), async (req: any, res) => {
+    try {
+      if (!req.files || req.files.length < 2) {
+        return res.status(400).json({ message: "At least 2 images are required" });
+      }
+      const userId = req.user.claims.sub;
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.collage_maker || 0);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+      const columns = parseInt(req.body.columns) || 2;
+      const spacing = parseInt(req.body.spacing) || 10;
+      const filePaths = req.files.map((f: any) => f.path);
+      const result = await processing.createCollage(filePaths, columns, spacing);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error creating collage:", error);
+      res.status(500).json({ message: error.message || "Failed to create collage" });
+    }
+  });
+
+  // Excel to CSV Tool
+  app.post("/api/tools/excel-to-csv", upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      const userId = req.user.claims.sub;
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.excel_to_csv || 0);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+      const result = await processing.excelToCsv(req.file.path);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error converting Excel to CSV:", error);
+      res.status(500).json({ message: error.message || "Failed to convert Excel to CSV" });
+    }
+  });
+
+  // XML to JSON Tool
+  app.post("/api/tools/xml-to-json", upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      const userId = req.user.claims.sub;
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.xml_to_json || 0);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+      const result = await processing.xmlToJson(req.file.path);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error converting XML to JSON:", error);
+      res.status(500).json({ message: error.message || "Failed to convert XML to JSON" });
+    }
+  });
+
+  // QR Code Generator Tool
+  app.post("/api/tools/qr-generator", async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.qr_generator || 0);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+      const { text, size } = req.body;
+      if (!text) {
+        return res.status(400).json({ message: "Text or URL is required" });
+      }
+      const result = await processing.generateQrCode(text, parseInt(size) || 256);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error generating QR code:", error);
+      res.status(500).json({ message: error.message || "Failed to generate QR code" });
+    }
+  });
+
   setInterval(async () => {
     try {
       await storage.deleteExpiredFiles();

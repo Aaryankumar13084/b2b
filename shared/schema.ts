@@ -20,11 +20,11 @@ export const subscriptionTierEnum = pgEnum('subscription_tier', ['free', 'pro', 
 export const fileStatusEnum = pgEnum('file_status', ['pending', 'processing', 'completed', 'failed', 'deleted']);
 export const toolTypeEnum = pgEnum('tool_type', [
   'pdf_to_word', 'word_to_pdf', 'pdf_merge', 'pdf_compress', 'pdf_split', 'pdf_lock', 'pdf_unlock',
-  'pdf_to_image', 'pdf_watermark', 'pdf_rotate', 'image_to_pdf',
-  'image_compress', 'image_resize', 'image_convert', 'bg_remove',
-  'csv_to_excel', 'excel_clean', 'json_format', 'text_to_csv',
+  'pdf_to_image', 'pdf_watermark', 'pdf_rotate', 'image_to_pdf', 'pdf_to_excel', 'pdf_page_delete', 'esign',
+  'image_compress', 'image_resize', 'image_convert', 'bg_remove', 'image_crop', 'image_filter', 'image_watermark', 'collage_maker',
+  'csv_to_excel', 'excel_clean', 'json_format', 'text_to_csv', 'excel_to_csv', 'xml_to_json', 'qr_generator',
   'ai_chat', 'ai_summary', 'ai_invoice', 'ai_resume', 'ai_legal', 'ai_data_clean', 'voice_to_doc',
-  'ai_translation', 'ai_grammar', 'ai_ocr'
+  'ai_translation', 'ai_grammar', 'ai_ocr', 'ai_writing', 'ai_email_extractor'
 ]);
 export const userRoleEnum = pgEnum('user_role', ['user', 'admin']);
 
@@ -237,6 +237,8 @@ export const TOOL_CREDITS = {
   ai_translation: 2,
   ai_grammar: 1,
   ai_ocr: 2,
+  ai_writing: 2,
+  ai_email_extractor: 1,
   // Non-AI tools are free
   pdf_to_word: 0,
   word_to_pdf: 0,
@@ -249,12 +251,22 @@ export const TOOL_CREDITS = {
   pdf_watermark: 0,
   pdf_rotate: 0,
   image_to_pdf: 0,
+  pdf_to_excel: 0,
+  pdf_page_delete: 0,
+  esign: 0,
   image_compress: 0,
   image_resize: 0,
   image_convert: 0,
   bg_remove: 0,
+  image_crop: 0,
+  image_filter: 0,
+  image_watermark: 0,
+  collage_maker: 0,
   csv_to_excel: 0,
   excel_clean: 0,
   json_format: 0,
   text_to_csv: 0,
+  excel_to_csv: 0,
+  xml_to_json: 0,
+  qr_generator: 0,
 } as const;

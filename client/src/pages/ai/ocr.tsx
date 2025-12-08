@@ -102,26 +102,12 @@ export default function AIOCR() {
       formData.append("file", file);
       
       setProgress(40);
+      setUploadState("processing");
       
-      const uploadResponse = await fetch("/api/files/upload", {
+      const response = await fetch("/api/ai/ocr", {
         method: "POST",
         body: formData,
         credentials: "include",
-      });
-      
-      if (!uploadResponse.ok) {
-        const uploadError = await uploadResponse.json();
-        throw new Error(uploadError.message || "Failed to upload file");
-      }
-      
-      const uploadData = await uploadResponse.json();
-      const fileId = uploadData.id || uploadData.file?.id;
-      
-      setProgress(60);
-      setUploadState("processing");
-      
-      const response = await apiRequest("POST", "/api/ai/ocr", {
-        fileId: fileId,
       });
       
       setProgress(90);
@@ -135,10 +121,10 @@ export default function AIOCR() {
       setProgress(100);
       setUploadState("complete");
       setResult({
-        extractedText: data.extractedText,
-        confidence: data.confidence || 95,
-        wordCount: data.wordCount || data.extractedText.split(/\s+/).filter((w: string) => w.length > 0).length,
-        language: data.language,
+        extractedText: data.text,
+        confidence: 95,
+        wordCount: data.wordCount || 0,
+        language: undefined,
       });
     } catch (error: any) {
       setUploadState("error");

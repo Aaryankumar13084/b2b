@@ -36,6 +36,16 @@ import PdfToImage from "@/pages/tools/pdf-to-image";
 import PdfWatermark from "@/pages/tools/pdf-watermark";
 import PdfRotate from "@/pages/tools/pdf-rotate";
 import ImageToPdf from "@/pages/tools/image-to-pdf";
+import PdfToExcel from "@/pages/tools/pdf-to-excel";
+import PdfPageDelete from "@/pages/tools/pdf-page-delete";
+import ESign from "@/pages/tools/esign";
+import ImageCrop from "@/pages/tools/image-crop";
+import ImageFilter from "@/pages/tools/image-filter";
+import ImageWatermark from "@/pages/tools/image-watermark";
+import CollageMaker from "@/pages/tools/collage-maker";
+import ExcelToCsv from "@/pages/tools/excel-to-csv";
+import XmlToJson from "@/pages/tools/xml-to-json";
+import QrGenerator from "@/pages/tools/qr-generator";
 
 import AIChat from "@/pages/ai/chat";
 import AISummary from "@/pages/ai/summary";
@@ -44,6 +54,9 @@ import AIResume from "@/pages/ai/resume";
 import AILegal from "@/pages/ai/legal";
 import AIDataClean from "@/pages/ai/data-clean";
 import AIVoice from "@/pages/ai/voice";
+import AIWriting from "@/pages/ai/writing";
+import AIEmailExtractor from "@/pages/ai/email-extractor";
+import AIOCR from "@/pages/ai/ocr";
 
 function AuthenticatedRoutes() {
   return (
@@ -68,6 +81,16 @@ function AuthenticatedRoutes() {
       <Route path="/tools/pdf-watermark" component={PdfWatermark} />
       <Route path="/tools/pdf-rotate" component={PdfRotate} />
       <Route path="/tools/image-to-pdf" component={ImageToPdf} />
+      <Route path="/tools/pdf-to-excel" component={PdfToExcel} />
+      <Route path="/tools/pdf-page-delete" component={PdfPageDelete} />
+      <Route path="/tools/esign" component={ESign} />
+      <Route path="/tools/image-crop" component={ImageCrop} />
+      <Route path="/tools/image-filter" component={ImageFilter} />
+      <Route path="/tools/image-watermark" component={ImageWatermark} />
+      <Route path="/tools/collage-maker" component={CollageMaker} />
+      <Route path="/tools/excel-to-csv" component={ExcelToCsv} />
+      <Route path="/tools/xml-to-json" component={XmlToJson} />
+      <Route path="/tools/qr-generator" component={QrGenerator} />
       <Route path="/ai" component={AIFeatures} />
       <Route path="/ai/chat" component={AIChat} />
       <Route path="/ai/summary" component={AISummary} />
@@ -76,6 +99,9 @@ function AuthenticatedRoutes() {
       <Route path="/ai/legal" component={AILegal} />
       <Route path="/ai/data-clean" component={AIDataClean} />
       <Route path="/ai/voice" component={AIVoice} />
+      <Route path="/ai/writing" component={AIWriting} />
+      <Route path="/ai/email-extractor" component={AIEmailExtractor} />
+      <Route path="/ai/ocr" component={AIOCR} />
       <Route path="/history" component={History} />
       <Route path="/subscription" component={Subscription} />
       <Route path="/settings" component={Settings} />

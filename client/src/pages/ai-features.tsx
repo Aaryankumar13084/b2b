@@ -14,6 +14,9 @@ import {
   Zap,
   Mic,
   TableProperties,
+  PenTool,
+  Mail,
+  ScanText,
 } from "lucide-react";
 
 interface AiTool {
@@ -82,6 +85,30 @@ const aiTools: AiTool[] = [
     icon: Mic,
     href: "/ai/voice",
     credits: TOOL_CREDITS.voice_to_doc,
+  },
+  {
+    id: "ai-writing",
+    title: "Writing Assistant",
+    description: "Generate blog posts, emails, and marketing content with AI",
+    icon: PenTool,
+    href: "/ai/writing",
+    credits: TOOL_CREDITS.ai_writing,
+  },
+  {
+    id: "ai-email-extractor",
+    title: "Email Extractor",
+    description: "Extract email addresses from documents automatically",
+    icon: Mail,
+    href: "/ai/email-extractor",
+    credits: TOOL_CREDITS.ai_email_extractor,
+  },
+  {
+    id: "ai-ocr",
+    title: "AI OCR",
+    description: "Extract text from images, including handwritten content",
+    icon: ScanText,
+    href: "/ai/ocr",
+    credits: TOOL_CREDITS.ai_ocr,
   },
 ];
 
