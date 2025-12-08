@@ -2,10 +2,11 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAdmin } from "./replitAuth";
-import { TOOL_CREDITS } from "@shared/schema";
+import { TOOL_CREDITS, CREDIT_LIMITS } from "@shared/schema";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 import Groq from "groq-sdk";
 import * as processing from "./services/processing";
 import { PDFParse } from "pdf-parse";
@@ -236,6 +237,35 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error downloading file:", error);
       res.status(500).json({ message: "Failed to download file" });
+    }
+  });
+
+  app.get("/api/files/:id/preview", async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+
+      const file = await storage.getFile(id);
+      if (!file) {
+        return res.status(404).json({ message: "File not found" });
+      }
+
+      if (file.userId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const filePath = file.outputPath || file.storagePath;
+
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ message: "File not found on disk" });
+      }
+
+      res.setHeader("Content-Type", file.mimeType || "application/octet-stream");
+      res.setHeader("Content-Disposition", "inline");
+      res.sendFile(filePath);
+    } catch (error) {
+      console.error("Error previewing file:", error);
+      res.status(500).json({ message: "Failed to preview file" });
     }
   });
 
@@ -1880,6 +1910,586 @@ Return ONLY the extracted text, no explanations or comments.`,
     } catch (error: any) {
       console.error("Error generating QR code:", error);
       res.status(500).json({ message: error.message || "Failed to generate QR code" });
+    }
+  });
+
+  // AI Image Generator (OpenAI DALL-E)
+  app.post("/api/ai/image-gen", async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(401).json({ message: "User not found" });
+      }
+      
+      const tier = user.subscriptionTier || "free";
+      const limits = CREDIT_LIMITS[tier as keyof typeof CREDIT_LIMITS];
+      const creditsNeeded = TOOL_CREDITS.ai_image_gen;
+      
+      if (limits.daily !== -1 && user.aiCreditsUsedToday + creditsNeeded > limits.daily) {
+        return res.status(429).json({ message: "Daily credit limit exceeded" });
+      }
+
+      const { prompt, size, style } = req.body;
+      if (!prompt || typeof prompt !== "string" || prompt.trim().length === 0) {
+        return res.status(400).json({ message: "Prompt is required" });
+      }
+      
+      const validSizes = ["1024x1024", "1792x1024", "1024x1792"];
+      const validStyles = ["vivid", "natural"];
+      const normalizedSize = validSizes.includes(size) ? size : "1024x1024";
+      const normalizedStyle = validStyles.includes(style) ? style : "vivid";
+
+      const startTime = Date.now();
+
+      if (!process.env.OPENAI_API_KEY) {
+        return res.status(500).json({ message: "OpenAI API key is not configured" });
+      }
+
+      const { default: OpenAI } = await import("openai");
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+      const response = await openai.images.generate({
+        model: "dall-e-3",
+        prompt: prompt.trim(),
+        n: 1,
+        size: normalizedSize,
+        quality: "standard",
+        style: normalizedStyle,
+      });
+
+      const imageUrl = response.data[0].url;
+      if (!imageUrl) {
+        return res.status(500).json({ message: "No image URL returned from OpenAI" });
+      }
+
+      const imageResponse = await fetch(imageUrl);
+      if (!imageResponse.ok) {
+        return res.status(500).json({ message: "Failed to download generated image" });
+      }
+      const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+
+      const randomId = crypto.randomUUID();
+      const outputFilename = `ai_image_${userId}_${randomId}.png`;
+      const outputPath = path.join(process.cwd(), "uploads", outputFilename);
+      fs.writeFileSync(outputPath, imageBuffer);
+
+      const savedFile = await storage.createFile({
+        userId,
+        originalName: outputFilename,
+        storagePath: outputPath,
+        mimeType: "image/png",
+        size: imageBuffer.length,
+        toolUsed: "ai_image_gen",
+      });
+
+      await storage.checkAndUpdateCredits(userId, creditsNeeded);
+
+      const processingTime = Date.now() - startTime;
+
+      await storage.logAiUsage({
+        userId,
+        toolType: "ai_image_gen",
+        creditsUsed: creditsNeeded,
+        processingTimeMs: processingTime,
+        success: true,
+      });
+
+      res.json({
+        success: true,
+        fileId: savedFile.id,
+        downloadUrl: `/api/files/${savedFile.id}/download`,
+        previewUrl: `/api/files/${savedFile.id}/preview`,
+        filename: outputFilename,
+      });
+    } catch (error: any) {
+      console.error("Error generating image:", error);
+      res.status(500).json({ message: error.message || "Failed to generate image" });
+    }
+  });
+
+  // AI Presentation Maker
+  app.post("/api/ai/presentation-maker", async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.ai_presentation_maker);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+
+      const { fileId, text, title, slideCount, theme } = req.body;
+      if (!title) {
+        return res.status(400).json({ message: "Title is required" });
+      }
+
+      const startTime = Date.now();
+      const groq = getGroqClient();
+
+      let content = text || "";
+      if (fileId && !content) {
+        const file = await storage.getFile(fileId);
+        if (file && file.userId === userId && fs.existsSync(file.storagePath)) {
+          const extractedText = await extractTextFromFile(file.storagePath, file.mimeType);
+          content = extractedText.slice(0, 15000);
+        }
+      }
+
+      if (!content) {
+        return res.status(400).json({ message: "No content to create presentation from" });
+      }
+
+      const slidesPrompt = `Create a professional presentation with ${slideCount || 10} slides based on this content.
+For each slide, provide:
+1. A clear title
+2. 3-5 bullet points with key information
+3. Speaker notes (brief)
+
+Format your response as JSON array:
+[
+  {
+    "title": "Slide Title",
+    "bullets": ["Point 1", "Point 2", "Point 3"],
+    "notes": "Speaker notes here"
+  }
+]
+
+Content to summarize:
+${content}`;
+
+      const chatCompletion = await groq.chat.completions.create({
+        messages: [
+          {
+            role: "system",
+            content: "You are an expert presentation designer. Create clear, concise slide content. Always respond with valid JSON array only, no other text.",
+          },
+          { role: "user", content: slidesPrompt },
+        ],
+        model: "llama-3.1-8b-instant",
+        temperature: 0.5,
+        max_tokens: 4096,
+      });
+
+      const slideContent = chatCompletion.choices[0]?.message?.content || "[]";
+      let slides;
+      try {
+        const jsonMatch = slideContent.match(/\[[\s\S]*\]/);
+        slides = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
+      } catch {
+        slides = [
+          { title: title, bullets: ["Content could not be parsed"], notes: "" }
+        ];
+      }
+
+      const pptxgenjs = await import("pptxgenjs");
+      const pptx = new pptxgenjs.default();
+
+      pptx.title = title;
+      pptx.author = "AI Presentation Maker";
+
+      const themeColors: Record<string, { bg: string; text: string; accent: string }> = {
+        professional: { bg: "FFFFFF", text: "333333", accent: "2563EB" },
+        modern: { bg: "1F2937", text: "F9FAFB", accent: "8B5CF6" },
+        minimal: { bg: "FAFAFA", text: "171717", accent: "737373" },
+        creative: { bg: "FDF4FF", text: "4C1D95", accent: "EC4899" },
+      };
+      const colors = themeColors[theme || "professional"] || themeColors.professional;
+
+      const titleSlide = pptx.addSlide();
+      titleSlide.background = { color: colors.bg };
+      titleSlide.addText(title, {
+        x: 0.5,
+        y: 2.5,
+        w: "90%",
+        h: 1.5,
+        fontSize: 44,
+        bold: true,
+        color: colors.text,
+        align: "center",
+      });
+
+      for (const slide of slides.slice(0, slideCount || 10)) {
+        const newSlide = pptx.addSlide();
+        newSlide.background = { color: colors.bg };
+
+        newSlide.addText(slide.title || "Slide", {
+          x: 0.5,
+          y: 0.3,
+          w: "90%",
+          h: 0.8,
+          fontSize: 32,
+          bold: true,
+          color: colors.accent,
+        });
+
+        const bulletText = (slide.bullets || []).map((b: string) => ({ text: b, options: { bullet: true } }));
+        newSlide.addText(bulletText, {
+          x: 0.5,
+          y: 1.3,
+          w: "90%",
+          h: 4,
+          fontSize: 18,
+          color: colors.text,
+          valign: "top",
+        });
+
+        if (slide.notes) {
+          newSlide.addNotes(slide.notes);
+        }
+      }
+
+      const outputPath = path.join(process.cwd(), "uploads", `presentation_${Date.now()}.pptx`);
+      await pptx.writeFile({ fileName: outputPath });
+
+      const processingTime = Date.now() - startTime;
+
+      await storage.logAiUsage({
+        userId,
+        toolType: "ai_presentation_maker",
+        creditsUsed: TOOL_CREDITS.ai_presentation_maker,
+        inputTokens: chatCompletion.usage?.prompt_tokens,
+        outputTokens: chatCompletion.usage?.completion_tokens,
+        processingTimeMs: processingTime,
+        success: true,
+      });
+
+      res.json({
+        downloadUrl: `/api/tools/download/${path.basename(outputPath)}`,
+        filename: `${title.replace(/[^a-zA-Z0-9]/g, "_")}.pptx`,
+        slidesCount: slides.length + 1,
+      });
+    } catch (error: any) {
+      console.error("Error creating presentation:", error);
+      res.status(500).json({ message: error.message || "Failed to create presentation" });
+    }
+  });
+
+  // PDF to PowerPoint Tool
+  app.post("/api/tools/pdf-to-ppt", upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      const userId = req.user.claims.sub;
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.pdf_to_ppt);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+
+      const extractedText = await extractTextFromFile(req.file.path, "application/pdf");
+      
+      const pptxgenjs = await import("pptxgenjs");
+      const pptx = new pptxgenjs.default();
+      pptx.title = path.basename(req.file.originalname, ".pdf");
+
+      const paragraphs = extractedText.split(/\n\n+/).filter(p => p.trim().length > 0);
+      const slidesContent: string[][] = [];
+      let currentSlide: string[] = [];
+      
+      for (const para of paragraphs) {
+        if (currentSlide.length >= 5 || (currentSlide.join(" ").length > 800)) {
+          if (currentSlide.length > 0) {
+            slidesContent.push(currentSlide);
+          }
+          currentSlide = [para];
+        } else {
+          currentSlide.push(para);
+        }
+      }
+      if (currentSlide.length > 0) {
+        slidesContent.push(currentSlide);
+      }
+
+      const titleSlide = pptx.addSlide();
+      titleSlide.addText(path.basename(req.file.originalname, ".pdf"), {
+        x: 0.5,
+        y: 2.5,
+        w: "90%",
+        h: 1.5,
+        fontSize: 44,
+        bold: true,
+        align: "center",
+      });
+
+      for (let i = 0; i < slidesContent.length; i++) {
+        const slide = pptx.addSlide();
+        slide.addText(`Slide ${i + 1}`, {
+          x: 0.5,
+          y: 0.3,
+          w: "90%",
+          h: 0.6,
+          fontSize: 28,
+          bold: true,
+        });
+
+        const content = slidesContent[i].map(text => ({
+          text: text.slice(0, 300),
+          options: { bullet: true },
+        }));
+        slide.addText(content, {
+          x: 0.5,
+          y: 1.2,
+          w: "90%",
+          h: 4.5,
+          fontSize: 16,
+          valign: "top",
+        });
+      }
+
+      const outputPath = path.join(process.cwd(), "uploads", `pdf_to_ppt_${Date.now()}.pptx`);
+      await pptx.writeFile({ fileName: outputPath });
+
+      res.json({
+        success: true,
+        downloadUrl: `/api/tools/download/${path.basename(outputPath)}`,
+        filename: path.basename(req.file.originalname, ".pdf") + ".pptx",
+        pageCount: slidesContent.length + 1,
+      });
+    } catch (error: any) {
+      console.error("Error converting PDF to PPT:", error);
+      res.status(500).json({ message: error.message || "Failed to convert PDF to PowerPoint" });
+    }
+  });
+
+  // Data Merge Tool
+  app.post("/api/tools/data-merge", upload.array("files", 20), async (req: any, res) => {
+    try {
+      if (!req.files || req.files.length < 2) {
+        return res.status(400).json({ message: "At least 2 files are required" });
+      }
+      const userId = req.user.claims.sub;
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.data_merge);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+
+      const outputFormat = req.body.outputFormat || "xlsx";
+      const allData: any[][] = [];
+      let headers: string[] | null = null;
+
+      for (const file of req.files as Express.Multer.File[]) {
+        const ext = path.extname(file.originalname).toLowerCase();
+        
+        if (ext === ".xlsx" || ext === ".xls") {
+          const workbook = XLSX.readFile(file.path);
+          const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+          const data = XLSX.utils.sheet_to_json(firstSheet, { header: 1 }) as any[][];
+          if (data.length > 0) {
+            if (!headers) {
+              headers = data[0] as string[];
+              allData.push(...data);
+            } else {
+              allData.push(...data.slice(1));
+            }
+          }
+        } else if (ext === ".csv") {
+          const content = fs.readFileSync(file.path, "utf-8");
+          const lines = content.split(/\r?\n/).filter(l => l.trim());
+          for (let i = 0; i < lines.length; i++) {
+            const row = lines[i].split(",").map(c => c.trim().replace(/^"|"$/g, ""));
+            if (i === 0 && !headers) {
+              headers = row;
+              allData.push(row);
+            } else if (i > 0 || headers) {
+              allData.push(row);
+            }
+          }
+        } else if (ext === ".json") {
+          const content = fs.readFileSync(file.path, "utf-8");
+          const jsonData = JSON.parse(content);
+          const arr = Array.isArray(jsonData) ? jsonData : [jsonData];
+          for (const item of arr) {
+            if (!headers) {
+              headers = Object.keys(item);
+              allData.push(headers);
+            }
+            allData.push(headers.map(h => item[h] ?? ""));
+          }
+        }
+      }
+
+      const outputPath = path.join(process.cwd(), "uploads", `merged_${Date.now()}.${outputFormat}`);
+
+      if (outputFormat === "xlsx") {
+        const ws = XLSX.utils.aoa_to_sheet(allData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Merged Data");
+        XLSX.writeFile(wb, outputPath);
+      } else if (outputFormat === "csv") {
+        const csvContent = allData.map(row => row.map((c: any) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+        fs.writeFileSync(outputPath, csvContent);
+      } else if (outputFormat === "json") {
+        if (allData.length > 1 && headers) {
+          const jsonArr = allData.slice(1).map(row => {
+            const obj: any = {};
+            headers!.forEach((h, i) => { obj[h] = row[i]; });
+            return obj;
+          });
+          fs.writeFileSync(outputPath, JSON.stringify(jsonArr, null, 2));
+        } else {
+          fs.writeFileSync(outputPath, "[]");
+        }
+      }
+
+      res.json({
+        success: true,
+        downloadUrl: `/api/tools/download/${path.basename(outputPath)}`,
+        filename: `merged_data.${outputFormat}`,
+        rowCount: allData.length,
+        columnCount: headers?.length || 0,
+      });
+    } catch (error: any) {
+      console.error("Error merging data:", error);
+      res.status(500).json({ message: error.message || "Failed to merge data files" });
+    }
+  });
+
+  // AI Translation
+  app.post("/api/ai/translation", async (req: any, res) => {
+    try {
+      const { fileId, text, sourceLanguage, targetLanguage } = req.body;
+      const userId = req.user.claims.sub;
+
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.ai_translation);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+
+      const startTime = Date.now();
+      const groq = getGroqClient();
+
+      let content = text || "";
+      if (fileId && !content) {
+        const file = await storage.getFile(fileId);
+        if (file && file.userId === userId && fs.existsSync(file.storagePath)) {
+          const extractedText = await extractTextFromFile(file.storagePath, file.mimeType);
+          content = extractedText.slice(0, 10000);
+        }
+      }
+
+      if (!content) {
+        return res.status(400).json({ message: "No content to translate" });
+      }
+
+      const sourceInfo = sourceLanguage ? `from ${sourceLanguage}` : "";
+      const chatCompletion = await groq.chat.completions.create({
+        messages: [
+          {
+            role: "system",
+            content: `You are an expert translator. Translate the text ${sourceInfo} to ${targetLanguage || "English"}. Preserve the original formatting and meaning. Only provide the translation, no explanations.`,
+          },
+          { role: "user", content: content },
+        ],
+        model: "llama-3.1-8b-instant",
+        temperature: 0.3,
+        max_tokens: 4096,
+      });
+
+      const translatedText = chatCompletion.choices[0]?.message?.content || "";
+      const processingTime = Date.now() - startTime;
+
+      await storage.logAiUsage({
+        userId,
+        toolType: "ai_translation",
+        creditsUsed: TOOL_CREDITS.ai_translation,
+        inputTokens: chatCompletion.usage?.prompt_tokens,
+        outputTokens: chatCompletion.usage?.completion_tokens,
+        processingTimeMs: processingTime,
+        success: true,
+      });
+
+      res.json({
+        originalText: content,
+        translatedText,
+        sourceLanguage: sourceLanguage || "auto",
+        targetLanguage: targetLanguage || "en",
+        wordCount: content.split(/\s+/).filter((w: string) => w.length > 0).length,
+      });
+    } catch (error: any) {
+      console.error("Error in AI translation:", error);
+      res.status(500).json({ message: error.message || "Failed to translate" });
+    }
+  });
+
+  // AI Grammar Checker
+  app.post("/api/ai/grammar", async (req: any, res) => {
+    try {
+      const { fileId, text } = req.body;
+      const userId = req.user.claims.sub;
+
+      const creditCheck = await storage.checkAndUpdateCredits(userId, TOOL_CREDITS.ai_grammar);
+      if (!creditCheck.allowed) {
+        return res.status(429).json({ message: creditCheck.message });
+      }
+
+      const startTime = Date.now();
+      const groq = getGroqClient();
+
+      let content = text || "";
+      if (fileId && !content) {
+        const file = await storage.getFile(fileId);
+        if (file && file.userId === userId && fs.existsSync(file.storagePath)) {
+          const extractedText = await extractTextFromFile(file.storagePath, file.mimeType);
+          content = extractedText.slice(0, 8000);
+        }
+      }
+
+      if (!content) {
+        return res.status(400).json({ message: "No content to check" });
+      }
+
+      const chatCompletion = await groq.chat.completions.create({
+        messages: [
+          {
+            role: "system",
+            content: `You are an expert grammar and style checker. Analyze the text for grammar, spelling, punctuation, and style issues. 
+Respond with JSON format only:
+{
+  "correctedText": "the fully corrected text",
+  "score": 0-100,
+  "issues": [
+    {"type": "grammar|spelling|punctuation|style", "original": "wrong text", "suggestion": "correct text", "explanation": "why"}
+  ]
+}`,
+          },
+          { role: "user", content: content },
+        ],
+        model: "llama-3.1-8b-instant",
+        temperature: 0.2,
+        max_tokens: 4096,
+      });
+
+      const responseText = chatCompletion.choices[0]?.message?.content || "{}";
+      let result;
+      try {
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        result = jsonMatch ? JSON.parse(jsonMatch[0]) : { correctedText: content, score: 100, issues: [] };
+      } catch {
+        result = { correctedText: content, score: 100, issues: [] };
+      }
+
+      const processingTime = Date.now() - startTime;
+
+      await storage.logAiUsage({
+        userId,
+        toolType: "ai_grammar",
+        creditsUsed: TOOL_CREDITS.ai_grammar,
+        inputTokens: chatCompletion.usage?.prompt_tokens,
+        outputTokens: chatCompletion.usage?.completion_tokens,
+        processingTimeMs: processingTime,
+        success: true,
+      });
+
+      res.json({
+        originalText: content,
+        correctedText: result.correctedText,
+        score: result.score || 100,
+        issues: result.issues || [],
+        wordCount: content.split(/\s+/).filter((w: string) => w.length > 0).length,
+      });
+    } catch (error: any) {
+      console.error("Error in AI grammar check:", error);
+      res.status(500).json({ message: error.message || "Failed to check grammar" });
     }
   });
 

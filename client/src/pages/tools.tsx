@@ -32,6 +32,8 @@ import {
   Palette,
   LayoutGrid,
   QrCode,
+  Presentation,
+  Merge,
 } from "lucide-react";
 
 interface Tool {
@@ -268,6 +270,22 @@ const tools: Tool[] = [
     icon: QrCode,
     category: "data",
     href: "/tools/qr-generator",
+  },
+  {
+    id: "pdf-to-ppt",
+    title: "PDF to PowerPoint",
+    description: "Convert PDF documents to PowerPoint presentations",
+    icon: Presentation,
+    category: "document",
+    href: "/tools/pdf-to-ppt",
+  },
+  {
+    id: "data-merge",
+    title: "Data Merge",
+    description: "Combine multiple Excel, CSV, or JSON files into one",
+    icon: Merge,
+    category: "data",
+    href: "/tools/data-merge",
   },
 ];
 

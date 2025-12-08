@@ -57,6 +57,12 @@ import AIVoice from "@/pages/ai/voice";
 import AIWriting from "@/pages/ai/writing";
 import AIEmailExtractor from "@/pages/ai/email-extractor";
 import AIOCR from "@/pages/ai/ocr";
+import AITranslation from "@/pages/ai/translation";
+import AIGrammar from "@/pages/ai/grammar";
+import AIImageGen from "@/pages/ai/image-gen";
+import AIPresentationMaker from "@/pages/ai/presentation-maker";
+import PdfToPpt from "@/pages/tools/pdf-to-ppt";
+import DataMerge from "@/pages/tools/data-merge";
 
 function AuthenticatedRoutes() {
   return (
@@ -102,6 +108,12 @@ function AuthenticatedRoutes() {
       <Route path="/ai/writing" component={AIWriting} />
       <Route path="/ai/email-extractor" component={AIEmailExtractor} />
       <Route path="/ai/ocr" component={AIOCR} />
+      <Route path="/ai/translation" component={AITranslation} />
+      <Route path="/ai/grammar" component={AIGrammar} />
+      <Route path="/ai/image-gen" component={AIImageGen} />
+      <Route path="/ai/presentation-maker" component={AIPresentationMaker} />
+      <Route path="/tools/pdf-to-ppt" component={PdfToPpt} />
+      <Route path="/tools/data-merge" component={DataMerge} />
       <Route path="/history" component={History} />
       <Route path="/subscription" component={Subscription} />
       <Route path="/settings" component={Settings} />

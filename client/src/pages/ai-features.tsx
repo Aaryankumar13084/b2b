@@ -17,6 +17,10 @@ import {
   PenTool,
   Mail,
   ScanText,
+  Languages,
+  SpellCheck,
+  Wand2,
+  Presentation,
 } from "lucide-react";
 
 interface AiTool {
@@ -109,6 +113,38 @@ const aiTools: AiTool[] = [
     icon: ScanText,
     href: "/ai/ocr",
     credits: TOOL_CREDITS.ai_ocr,
+  },
+  {
+    id: "ai-translation",
+    title: "AI Translation",
+    description: "Translate documents and text to any language",
+    icon: Languages,
+    href: "/ai/translation",
+    credits: TOOL_CREDITS.ai_translation,
+  },
+  {
+    id: "ai-grammar",
+    title: "Grammar Checker",
+    description: "Fix spelling, grammar, and style issues",
+    icon: SpellCheck,
+    href: "/ai/grammar",
+    credits: TOOL_CREDITS.ai_grammar,
+  },
+  {
+    id: "ai-image-gen",
+    title: "Image Generator",
+    description: "Generate stunning images from text descriptions",
+    icon: Wand2,
+    href: "/ai/image-gen",
+    credits: TOOL_CREDITS.ai_image_gen,
+  },
+  {
+    id: "ai-presentation-maker",
+    title: "Presentation Maker",
+    description: "Transform content into professional PowerPoint presentations",
+    icon: Presentation,
+    href: "/ai/presentation-maker",
+    credits: TOOL_CREDITS.ai_presentation_maker,
   },
 ];
 
