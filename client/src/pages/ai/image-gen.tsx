@@ -78,6 +78,7 @@ export default function AIImageGen() {
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
   const [activePrompt, setActivePrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
   const { toast } = useToast();
 
   const selectedSize = SIZES.find(s => s.value === size) || SIZES[0];
@@ -142,6 +143,7 @@ export default function AIImageGen() {
     setGeneratedUrl(null);
     setActivePrompt("");
     setIsGenerating(false);
+    setImageLoaded(false);
   };
 
   return (
@@ -300,20 +302,31 @@ export default function AIImageGen() {
                 </div>
 
                 <div className="relative rounded-lg overflow-hidden border">
+                  {!imageLoaded && (
+                    <div className="flex items-center justify-center p-8 bg-muted/50">
+                      <div className="flex flex-col items-center gap-2">
+                        <Wand2 className="w-8 h-8 text-purple-500 animate-pulse" />
+                        <p className="text-sm text-muted-foreground">Loading image...</p>
+                      </div>
+                    </div>
+                  )}
                   <img
                     src={generatedUrl}
                     alt={activePrompt}
-                    className="w-full h-auto"
+                    className={`w-full h-auto ${!imageLoaded ? 'hidden' : ''}`}
+                    onLoad={() => setImageLoaded(true)}
                     data-testid="img-generated"
                   />
                 </div>
 
-                <div className="flex gap-2">
-                  <Button onClick={handleDownload} className="flex-1 gap-2" data-testid="button-download">
-                    <Download className="w-4 h-4" />
-                    Download Image
-                  </Button>
-                </div>
+                {imageLoaded && (
+                  <div className="flex gap-2">
+                    <Button onClick={handleDownload} className="flex-1 gap-2" data-testid="button-download">
+                      <Download className="w-4 h-4" />
+                      Download Image
+                    </Button>
+                  </div>
+                )}
 
                 <Card className="bg-muted/50">
                   <CardContent className="p-4">
