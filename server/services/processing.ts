@@ -1,4 +1,4 @@
-import { PDFDocument, StandardFonts } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, degrees } from "pdf-lib";
 import sharp from "sharp";
 import ExcelJS from "exceljs";
 import * as XLSX from "xlsx";
@@ -958,9 +958,9 @@ export async function addWatermarkToPdf(
         y,
         size: fontSize,
         font,
-        color: { r: color.r / 255, g: color.g / 255, b: color.b / 255 },
+        color: rgb(color.r / 255, color.g / 255, color.b / 255),
         opacity,
-        rotate: rotateAngle !== 0 ? { type: 0, angle: rotateAngle * Math.PI / 180 } : undefined,
+        rotate: rotateAngle !== 0 ? degrees(rotateAngle) : undefined,
       });
     }
     
@@ -1015,7 +1015,7 @@ export async function rotatePdf(
     for (const pageIndex of pagesToRotate) {
       const page = pdfDoc.getPage(pageIndex);
       const currentRotation = page.getRotation().angle;
-      page.setRotation({ type: 0, angle: currentRotation + rotation });
+      page.setRotation(degrees(currentRotation + rotation));
     }
     
     const outputDir = path.dirname(inputPath);
